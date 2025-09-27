@@ -7,8 +7,8 @@
 #include "../inih/ini.h"
 
 #define DEFAULT_CONFIG_PATH "/etc/chimer95.conf"
-#define buffer_maxlength 1024
-#define buffer_tlength_fragsize 1024
+#define buffer_maxlength 2048
+#define buffer_tlength_fragsize 2048
 #define buffer_prebuf 0
 
 #include "../dsp/oscillator.h"
