@@ -14,7 +14,7 @@
 #include "../filter/bs412.h"
 #include "../filter/gain_control.h"
 
-#define BUFFER_SIZE 3072 // This defines how many samples to process at a time, because the loop here is this: get signal -> process signal -> output signal, and when we get signal we actually get BUFFER_SIZE of them
+#define BUFFER_SIZE 8192 // This defines how many samples to process at a time, because the loop here is this: get signal -> process signal -> output signal, and when we get signal we actually get BUFFER_SIZE of them
 
 #include "../io/audio.h"
 
@@ -390,7 +390,7 @@ int setup_audio(FM95_Runtime* runtime, const FM95_DeviceNames dv_names, const FM
 	pa_buffer_attr output_buffer_atr = {
 		.maxlength = buffer_maxlength,
 		.tlength = buffer_tlength_fragsize,
-		.prebuf = 16
+		.prebuf = 64
 	};
 
 	int opentime_pulse_error;

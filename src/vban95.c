@@ -8,7 +8,7 @@
 
 #define buffer_maxlength 12288
 #define buffer_tlength_fragsize 12288
-#define buffer_prebuf 8
+#define buffer_prebuf 64
 
 #include "../io/audio.h"
 #include "../lib/debug.h"

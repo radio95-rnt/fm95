@@ -16,7 +16,7 @@
 #define INPUT_DEVICE "SCA.monitor"
 #define OUTPUT_DEVICE "FM_MPX"
 
-#define BUFFER_SIZE 1024
+#define BUFFER_SIZE 3072
 
 #include "../io/audio.h"
 

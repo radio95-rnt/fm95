@@ -18,7 +18,7 @@
 
 #define OUTPUT_DEVICE "FM_MPX"
 
-#define BUFFER_SIZE 512
+#define BUFFER_SIZE 1024
 
 #include "../io/audio.h"
 
