@@ -31,6 +31,7 @@ typedef struct
 {
 	bool rds_on;
 	bool mpx_on;
+	bool hq_on;
 } FM95_Options;
 typedef struct
 {
@@ -51,7 +52,6 @@ typedef struct
 
 	float clipper_threshold;
 	uint8_t preemphasis;
-	float tilt;
 	uint8_t calibration;
 	float mpx_power;
 	float mpx_deviation;
@@ -80,13 +80,12 @@ typedef struct
 typedef struct
 {
 	PulseInputDevice input_device, mpx_device, rds_device;
-	PulseOutputDevice output_device;
+	PulseOutputDevice output_device, hq_output;
 	float* rds_in;
 	Oscillator osc;
 	iirfilt_rrrf lpf_l, lpf_r;
 	ResistorCapacitor preemp_l, preemp_r;
 	BS412Compressor bs412;
-	TiltCorrectionFilter tilter;
 	StereoEncoder stencode;
 	AGC agc;
 } FM95_Runtime;
@@ -94,6 +93,7 @@ typedef struct
 typedef struct {
     char input[64];
     char output[64];
+    char hq[64];
     char mpx[64];
     char rds[64];
 } FM95_DeviceNames;
@@ -145,6 +145,7 @@ void cleanup_runtime(FM95_Runtime* runtime, const FM95_Config config) {
 
 void cleanup_audio_runtime(FM95_Runtime *rt, const FM95_Options options) {
     free_PulseDevice(&rt->input_device);
+    if (options.hq_on) free_PulseDevice(&rt->hq_output);
     if (options.mpx_on) free_PulseDevice(&rt->mpx_device);
     if (options.rds_on) {
 		free_PulseDevice(&rt->rds_device);
@@ -155,6 +156,7 @@ void cleanup_audio_runtime(FM95_Runtime *rt, const FM95_Options options) {
 
 int run_fm95(const FM95_Config config, FM95_Runtime* runtime) {
 	float output[BUFFER_SIZE];
+	float output_hq[BUFFER_SIZE*2];
 
 	int pulse_error;
 
@@ -163,7 +165,6 @@ int run_fm95(const FM95_Config config, FM95_Runtime* runtime) {
 			for (int i = 0; i < BUFFER_SIZE; i++) {
 				float sample = get_oscillator_sin_sample(&runtime->osc);
 				if(config.calibration == 2) sample = (sample > 0.0f) ? 1.0f : -1.0f; // Sine wave to square wave filter, 50% duty cycle
-				if(config.tilt != 0) sample = tilt(&runtime->tilter, sample);
 				output[i] = sample*config.master_volume;
 			}
 			if((pulse_error = write_PulseOutputDevice(&runtime->output_device, output, sizeof(output)))) { // get output from the function and assign it into pulse_error, this comment to avoid confusion
@@ -243,16 +244,25 @@ int run_fm95(const FM95_Config config, FM95_Runtime* runtime) {
 			}
 
 			mpx = bs412_compress(&runtime->bs412, mpx+mpx_in[i]);
-			if(config.tilt != 0) mpx = tilt(&runtime->tilter, mpx);
 
 			output[i] = hard_clip(mpx*config.master_volume, 1.0); // Ensure peak deviation of 75 khz (or the set deviation), assuming we're calibrated correctly
 			advance_oscillator(&runtime->osc);
+
+			output_hq[2*i+0] = hard_clip(l, 1.0f);
+			output_hq[2*i+1] = hard_clip(r, 1.0f);
 		}
 
 		if((pulse_error = write_PulseOutputDevice(&runtime->output_device, output, sizeof(output)))) {
 			fprintf(stderr, "Error writing to output device: %s\n", pa_strerror(pulse_error));
 			to_run = 0;
 			break;
+		}
+		if(config.options.hq_on) {
+			if((pulse_error = write_PulseOutputDevice(&runtime->hq_output, output_hq, sizeof(output_hq)))) {
+				fprintf(stderr, "Error writing to HQ output device: %s\n", pa_strerror(pulse_error));
+				to_run = 0;
+				break;
+			}
 		}
 	}
 
@@ -299,6 +309,9 @@ static int config_handler(void* user, const char* section, const char* name, con
     } else if (MATCH("devices", "output")) {
         strncpy(dv->output, value, 63);
         dv->output[63] = '\0';
+	} else if (MATCH("devices", "hq")) {
+        strncpy(dv->hq, value, 63);
+        dv->hq[63] = '\0';
     } else if (MATCH("devices", "mpx")) {
         strncpy(dv->mpx, value, 63);
         dv->mpx[63] = '\0';
@@ -329,8 +342,6 @@ static int config_handler(void* user, const char* section, const char* name, con
         pconfig->audio_preamp = strtof(value, NULL);
     } else if (MATCH("fm95", "deviation")) {
         pconfig->audio_deviation = strtof(value, NULL);
-	} else if(MATCH("fm95", "tilt")) {
-		pconfig->tilt = strtof(value, NULL);
 	} else if(MATCH("fm95", "bs412_max")) {
 		pconfig->bs412_max = strtof(value, NULL);
 	} else if(MATCH("fm95", "agc_target")) {
@@ -427,20 +438,38 @@ int setup_audio(FM95_Runtime* runtime, const FM95_DeviceNames dv_names, const FM
 
 	printf("Connecting to output device... (%s)\n", dv_names.output);
 
-	opentime_pulse_error = init_PulseOutputDevice(&runtime->output_device, config.sample_rate, 1, "fm95", "Main Audio Output", dv_names.output, &output_buffer_atr, PA_SAMPLE_FLOAT32NE);
+	opentime_pulse_error = init_PulseOutputDevice(&runtime->output_device, config.sample_rate, 1, "fm95", "MPX Output", dv_names.output, &output_buffer_atr, PA_SAMPLE_FLOAT32NE);
 	if (opentime_pulse_error) {
 		fprintf(stderr, "Error: cannot open output device: %s\n", pa_strerror(opentime_pulse_error));
 		free_PulseDevice(&runtime->input_device);
 		if(config.options.mpx_on) free_PulseDevice(&runtime->mpx_device);
-		if(config.options.rds_on) free_PulseDevice(&runtime->rds_device);
+		if(config.options.rds_on) {
+    	    free_PulseDevice(&runtime->rds_device);
+	        free(runtime->rds_in);
+    	}
 		return 1;
+	}
+
+	if(config.options.hq_on) {
+		printf("Connecting to HQ device... (%s)\n", dv_names.hq);
+
+		opentime_pulse_error = init_PulseOutputDevice(&runtime->hq_output, config.sample_rate, 2, "fm95", "Audio output", dv_names.hq, &output_buffer_atr, PA_SAMPLE_FLOAT32NE);
+		if (opentime_pulse_error) {
+			fprintf(stderr, "Error: cannot open HQ device: %s\n", pa_strerror(opentime_pulse_error));
+			free_PulseDevice(&runtime->input_device);
+			free_PulseDevice(&runtime->output_device);
+			if(config.options.mpx_on) free_PulseDevice(&runtime->mpx_device);
+			if(config.options.rds_on) {
+    	    	free_PulseDevice(&runtime->rds_device);
+		        free(runtime->rds_in);
+    		}
+			return 1;
+		}
 	}
 	return 0;
 }
 
-void init_runtime(FM95_Runtime* runtime, const FM95_Config config) {
-	if(config.tilt != 0) tilt_init(&runtime->tilter, config.tilt, config.sample_rate);
-	
+void init_runtime(FM95_Runtime* runtime, const FM95_Config config) {	
 	if(config.calibration != 0) {
 		init_oscillator(&runtime->osc, (config.calibration == 2) ? 60 : 400, config.sample_rate);
 		return;
@@ -475,7 +504,7 @@ void init_runtime(FM95_Runtime* runtime, const FM95_Config config) {
 }
 
 int main(int argc, char **argv) {
-	printf("fm95 (an FM Processor by radio95) version 2.2\n");
+	printf("fm95 (an FM Processor by radio95) version 2.3\n");
 
 	FM95_Config config = {
 		.volumes = {
@@ -490,7 +519,6 @@ int main(int argc, char **argv) {
 
 		.clipper_threshold = 1.0f, // At what level for the clipper to work, 1.0f, clips the audio at 1 volt peak to peak, so it will be always between -1 and 1
 		.preemphasis = 50, // Europe, the "freedomers" use 75µs
-		.tilt = 0, // Off
 		.calibration = 0, // Off
 		.mpx_power = 3.0f, // dbr, this is for BS412, simplest bs412
 		.mpx_deviation = 75000.0f, // for BS412, this is what deviation does the compressor see as peak, so if i set here 150 khz, then the compressor will act as if it was two times louder
@@ -520,7 +548,8 @@ int main(int argc, char **argv) {
 		.input = "\0",
 		.output = "\0",
 		.mpx = "\0",
-		.rds = "\0"
+		.rds = "\0",
+		.hq = "\0"
 	};
 	FM95_DeviceNames old_dv_names = dv_names;
 
@@ -552,6 +581,7 @@ int main(int argc, char **argv) {
 
 	config.options.mpx_on = (strlen(dv_names.mpx) != 0);
 	config.options.rds_on = (strlen(dv_names.rds) != 0 && config.rds_streams != 0);
+	config.options.hq_on = (strlen(dv_names.hq) != 0);
 
 	err = setup_audio(&runtime, dv_names, config);
 	if(err != 0) return err;
