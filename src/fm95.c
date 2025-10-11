@@ -214,22 +214,24 @@ int run_fm95(const FM95_Config config, FM95_Runtime* runtime) {
 				r *= agc_gain;
 			}
 
+			float mod_l, mod_r;
+
 			if(config.lpf_cutoff != 0) {
-				iirfilt_rrrf_execute(runtime->lpf_l, l, &l);
-				iirfilt_rrrf_execute(runtime->lpf_r, r, &r);
+				iirfilt_rrrf_execute(runtime->lpf_l, l, &mod_l);
+				iirfilt_rrrf_execute(runtime->lpf_r, r, &mod_r);
 			}
 			
 			if(config.preemphasis != 0) {
-				l = apply_preemphasis(&runtime->preemp_l, l);
-				r = apply_preemphasis(&runtime->preemp_r, r);
+				mod_l = apply_preemphasis(&runtime->preemp_l, mod_l);
+				mod_r = apply_preemphasis(&runtime->preemp_r, mod_r);
 			}
 
 			if (config.clipper_threshold != 0) {
-				l = hard_clip(l * config.audio_volume, config.clipper_threshold);
-				r = hard_clip(r * config.audio_volume, config.clipper_threshold);
+				mod_l = hard_clip(mod_l * config.audio_volume, config.clipper_threshold);
+				mod_r = hard_clip(mod_r * config.audio_volume, config.clipper_threshold);
 			}
 
-			mpx = stereo_encode(&runtime->stencode, config.stereo, l, r);
+			mpx = stereo_encode(&runtime->stencode, config.stereo, mod_l, mod_r);
 
 			if(rds_on) {
 				float rds_level = config.volumes.rds;
