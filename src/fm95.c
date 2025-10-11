@@ -214,6 +214,11 @@ int run_fm95(const FM95_Config config, FM95_Runtime* runtime) {
 				r *= agc_gain;
 			}
 
+			if (config.clipper_threshold != 0) {
+				l = hard_clip(l * config.audio_volume, config.clipper_threshold);
+				r = hard_clip(r * config.audio_volume, config.clipper_threshold);
+			}
+
 			float mod_l, mod_r;
 
 			if(config.lpf_cutoff != 0) {
@@ -224,11 +229,6 @@ int run_fm95(const FM95_Config config, FM95_Runtime* runtime) {
 			if(config.preemphasis != 0) {
 				mod_l = apply_preemphasis(&runtime->preemp_l, mod_l);
 				mod_r = apply_preemphasis(&runtime->preemp_r, mod_r);
-			}
-
-			if (config.clipper_threshold != 0) {
-				mod_l = hard_clip(mod_l * config.audio_volume, config.clipper_threshold);
-				mod_r = hard_clip(mod_r * config.audio_volume, config.clipper_threshold);
 			}
 
 			mpx = stereo_encode(&runtime->stencode, config.stereo, mod_l, mod_r);
