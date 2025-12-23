@@ -246,7 +246,7 @@ int run_fm95(const FM95_Config config, FM95_Runtime* runtime) {
 			lua_setglobal(runtime->lua, "left");
 			lua_pushnumber(runtime->lua, mod_r);
 			lua_setglobal(runtime->lua, "right");
-			lua_pcall(runtime->lua, 0, 0, 0)
+			lua_pcall(runtime->lua, 0, 0, 0);
 
 			mpx = stereo_encode(&runtime->stencode, config.stereo, mod_l, mod_r);
 
