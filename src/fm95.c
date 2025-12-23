@@ -188,10 +188,11 @@ int run_fm95(const FM95_Config config, FM95_Runtime* runtime) {
 	bool mpx_on = config.options.mpx_on;
 	bool rds_on = config.options.rds_on;
 
+	int script_ref = 0;
 	// Load the file
-	if (luaL_loadfile(L, "/home/user/test.lua") == LUA_OK) {
+	if (luaL_loadfile(runtime->lua, "/home/user/test.lua") == LUA_OK) {
 		// luaL_ref pops the function from the stack and returns a unique integer ID
-		int script_ref = luaL_ref(L, LUA_REGISTRYINDEX);
+		script_ref = luaL_ref(L, LUA_REGISTRYINDEX);
 	}
 
 	while (to_run) {
