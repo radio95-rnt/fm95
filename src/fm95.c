@@ -277,7 +277,7 @@ int run_fm95(const FM95_Config config, FM95_Runtime* runtime) {
 				break;
 			}
 		}
-		lua_gc(runtime.lua, LUA_GCSTEP);
+		lua_gc(runtime->lua, LUA_GCSTEP);
 	}
 
 	return 0;
