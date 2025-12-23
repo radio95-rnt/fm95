@@ -188,6 +188,12 @@ int run_fm95(const FM95_Config config, FM95_Runtime* runtime) {
 	bool mpx_on = config.options.mpx_on;
 	bool rds_on = config.options.rds_on;
 
+	// Load the file
+	if (luaL_loadfile(L, "/home/user/test.lua") == LUA_OK) {
+		// luaL_ref pops the function from the stack and returns a unique integer ID
+		int script_ref = luaL_ref(L, LUA_REGISTRYINDEX);
+	}
+
 	while (to_run) {
 		if((pulse_error = read_PulseInputDevice(&runtime->input_device, audio_stereo_input, sizeof(audio_stereo_input)))) { // get output from the function and assign it into pulse_error, this comment to avoid confusion
 			fprintf(stderr, "Error reading from input device: %s\n", pa_strerror(pulse_error));
@@ -240,7 +246,7 @@ int run_fm95(const FM95_Config config, FM95_Runtime* runtime) {
 			lua_setglobal(runtime->lua, "left");
 			lua_pushnumber(runtime->lua, mod_r);
 			lua_setglobal(runtime->lua, "right");
-			luaL_dofile(runtime->lua, "/home/user/fm95_lua_test.lua");
+			lua_pcall(runtime->lua, 0, 0, 0)
 
 			mpx = stereo_encode(&runtime->stencode, config.stereo, mod_l, mod_r);
 
@@ -279,6 +285,7 @@ int run_fm95(const FM95_Config config, FM95_Runtime* runtime) {
 		}
 		lua_gc(runtime->lua, LUA_GCSTEP);
 	}
+	luaL_unref(runtime->lua, LUA_REGISTRYINDEX, script_ref);
 
 	return 0;
 }
