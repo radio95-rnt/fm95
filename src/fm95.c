@@ -243,14 +243,14 @@ int run_fm95(const FM95_Config config, FM95_Runtime* runtime) {
 				mod_r = apply_preemphasis(&runtime->preemp_r, mod_r);
 			}
 
-			lua_rawgeti(L, LUA_REGISTRYINDEX, runtime->script_ref);
-			lua_pushnumber(L, mod_l); // Argument 1
-			lua_pushnumber(L, mod_r); // Argument 2
+			lua_rawgeti(runtime->lua, LUA_REGISTRYINDEX, script_ref);
+			lua_pushnumber(runtime->lua, mod_l); // Argument 1
+			lua_pushnumber(runtime->lua, mod_r); // Argument 2
 
-			if (lua_pcall(L, 2, 2, 0) == LUA_OK) { // 2 args, 2 results
-				mod_r = lua_tonumber(L, -1);
-				mod_l = lua_tonumber(L, -2);
-				lua_pop(L, 2);
+			if (lua_pcall(runtime->lua, 2, 2, 0) == LUA_OK) { // 2 args, 2 results
+				mod_r = lua_tonumber(runtime->lua, -1);
+				mod_l = lua_tonumber(runtime->lua, -2);
+				lua_pop(runtime->lua, 2);
 			}
 
 			mpx = stereo_encode(&runtime->stencode, config.stereo, mod_l, mod_r);
