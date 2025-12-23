@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.10)
 
 project(FMTools LANGUAGES C)
+find_package(Lua REQUIRED)
 
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_C_STANDARD_REQUIRED YES)
@@ -45,7 +46,8 @@ foreach(SRC_FILE ${SRC_FILES})
     target_compile_options(${EXEC_NAME} PRIVATE -O2 -Wall -Wextra -Werror -Wno-unused-parameter)
 
     if(EXEC_NAME STREQUAL "fm95")
-        target_link_libraries(${EXEC_NAME} PRIVATE libfmfilter libfmmodulation libfmdsp libfmio pulse pulse-simple m liquid inih)
+        target_include_directories(${EXEC_NAME} PRIVATE ${LUA_INCLUDE_DIR})
+        target_link_libraries(${EXEC_NAME} PRIVATE libfmfilter libfmmodulation libfmdsp libfmio pulse pulse-simple m liquid inih ${LUA_LIBRARIES})
     elseif(EXEC_NAME STREQUAL "chimer95")
         target_link_libraries(${EXEC_NAME} PRIVATE libfmdsp inih m libfmio pulse pulse-simple)
     elseif(EXEC_NAME STREQUAL "sca95")
