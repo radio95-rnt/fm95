@@ -14,6 +14,10 @@
 #include "../filter/bs412.h"
 #include "../filter/gain_control.h"
 
+#include <lua.h>
+#include <lualib.h>
+#include <lauxlib.h>
+
 #define BUFFER_SIZE 4096 // This defines how many samples to process at a time, because the loop here is this: get signal -> process signal -> output signal, and when we get signal we actually get BUFFER_SIZE of them
 
 #include "../io/audio.h"
@@ -88,6 +92,7 @@ typedef struct
 	BS412Compressor bs412;
 	StereoEncoder stencode;
 	AGC agc;
+	lua_State* lua;
 } FM95_Runtime;
 
 typedef struct {
@@ -231,6 +236,12 @@ int run_fm95(const FM95_Config config, FM95_Runtime* runtime) {
 				mod_r = apply_preemphasis(&runtime->preemp_r, mod_r);
 			}
 
+			lua_pushnumber(runtime->lua, mod_l);
+			lua_setglobal(runtime->lua, "left");
+			lua_pushnumber(runtime->lua, mod_r);
+			lua_setglobal(runtime->lua, "right");
+			luaL_dofile(runtime->lua, "/home/user/fm95_lua_test.lua");
+
 			mpx = stereo_encode(&runtime->stencode, config.stereo, mod_l, mod_r);
 
 			if(rds_on) {
@@ -266,6 +277,7 @@ int run_fm95(const FM95_Config config, FM95_Runtime* runtime) {
 				break;
 			}
 		}
+		lua_gc(runtime.lua, LUA_GCSTEP);
 	}
 
 	return 0;
@@ -580,6 +592,8 @@ int main(int argc, char **argv) {
 
 	FM95_Runtime runtime;
 	memset(&runtime, 0, sizeof(runtime));
+	runtime.lua = luaL_newstate();
+	lua_gc(runtime.lua, LUA_GCSTOP);
 
 	config.options.mpx_on = (strlen(dv_names.mpx) != 0);
 	config.options.rds_on = (strlen(dv_names.rds) != 0 && config.rds_streams != 0);
