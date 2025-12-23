@@ -192,7 +192,7 @@ int run_fm95(const FM95_Config config, FM95_Runtime* runtime) {
 	// Load the file
 	if (luaL_loadfile(runtime->lua, "/home/user/test.lua") == LUA_OK) {
 		// luaL_ref pops the function from the stack and returns a unique integer ID
-		script_ref = luaL_ref(L, LUA_REGISTRYINDEX);
+		script_ref = luaL_ref(runtime->lua, LUA_REGISTRYINDEX);
 	}
 
 	while (to_run) {
