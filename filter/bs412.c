@@ -24,7 +24,7 @@ void init_bs412(BS412Compressor* mpx, uint32_t mpx_deviation, float target_power
 	#endif
 }
 
-inline float soft_clip_tanh(float sample, float threshold) {
+static inline float soft_clip_tanh(float sample, float threshold) {
     if (fabsf(sample) <= threshold) {
         return sample;  // Linear region
     }
