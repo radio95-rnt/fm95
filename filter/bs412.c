@@ -38,7 +38,7 @@ float bs412_compress(BS412Compressor* mpx, float sample) {
 	mpx->average_counter++;
 
 	float avg_power = mpx->average / mpx->average_counter;
-	float avg_deviation = sqrtf(avg_power);
+	float avg_deviation = sqrtf(avg_power) * sqrtf(2);
 	float modulation_power = deviation_to_dbr(avg_deviation);
 
 	#ifdef BS412_DEBUG
