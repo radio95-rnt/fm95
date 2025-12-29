@@ -1,9 +1,7 @@
 #include "bs412.h"
 
-#define LOG2_19000 log2f(19000.0f)
-
 inline float dbr_to_deviation(float dbr) {
-	return 19000.0f * powf(2.0f, dbr * 0.332193f);
+	return 19000.0f * pow(10.0, dbr / 10.0);
 }
 
 inline float deviation_to_dbr(float deviation) {
