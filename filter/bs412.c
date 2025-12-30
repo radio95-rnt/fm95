@@ -36,7 +36,7 @@ static inline float soft_clip_tanh(float sample, float threshold) {
 float bs412_compress(BS412Compressor* mpx, float sample) {
 	mpx->avg_power += mpx->alpha * ((sample * sample * mpx->mpx_deviation * mpx->mpx_deviation) - mpx->avg_power);
 
-	float avg_deviation = mpx->avg_power;
+	float avg_deviation = sqrtf(mpx->avg_power) / sqrtf(2);
 	float modulation_power = deviation_to_dbr(avg_deviation);
 
 	if(mpx->target <= -100.0f) {
