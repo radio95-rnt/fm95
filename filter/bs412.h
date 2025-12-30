@@ -23,6 +23,8 @@ typedef struct
 	float gain;
 	double avg_power;
 	double alpha;
+	uint8_t can_compress : 1;
+	uint8_t second_counter;
 } BS412Compressor;
 
 float dbr_to_deviation(float dbr);

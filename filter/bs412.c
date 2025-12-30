@@ -19,6 +19,8 @@ void init_bs412(BS412Compressor* mpx, uint32_t mpx_deviation, float target_power
 	mpx->target = target_power;
 	mpx->gain = 0.0f;
 	mpx->max = max;
+	mpx->can_compress = 0;
+	mpx->second_counter = 0;
 	#ifdef BS412_DEBUG
 	debug_printf("Initialized MPX power measurement with sample rate: %d\n", sample_rate);
 	#endif
@@ -36,7 +38,7 @@ static inline float soft_clip_tanh(float sample, float threshold) {
 float bs412_compress(BS412Compressor* mpx, float sample) {
 	mpx->avg_power += mpx->alpha * ((sample * sample * mpx->mpx_deviation * mpx->mpx_deviation) - mpx->avg_power);
 
-	float avg_deviation = sqrtf(mpx->avg_power) / sqrtf(2);
+	float avg_deviation = sqrtf(mpx->avg_power) * sqrtf(2);
 	float modulation_power = deviation_to_dbr(avg_deviation);
 
 	if(mpx->target <= -100.0f) {
@@ -50,12 +52,25 @@ float bs412_compress(BS412Compressor* mpx, float sample) {
 		return sample;
 	}
 
-	#ifdef BS412_DEBUG
 	if(mpx->sample_counter > mpx->sample_rate) {
+		#ifdef BS412_DEBUG
 		debug_printf("MPX power: %.2f dBr with gain %.2fx (%.2f dBr)\n", modulation_power, mpx->gain, deviation_to_dbr(avg_deviation * mpx->gain));
+		#endif
 		mpx->sample_counter = 0;
+		if(mpx->can_compress == 0) mpx->second_counter++;
 	}
-	#endif
+
+	if(mpx->can_compress == 0 && mpx->sample_counter > 60) {
+		#ifdef BS412_DEBUG
+		debug_printf("Can compress.\n");
+		#endif
+		mpx->can_compress = 1;
+	}
+
+	if(mpx->can_compress == 0) {
+		mpx->sample_counter++;
+		return sample;
+	}
 
 	float target_gain = powf(10.0f, (mpx->target - modulation_power) / 10.0f);
 	if (modulation_power > mpx->target) {
