@@ -41,12 +41,6 @@ float bs412_compress(BS412Compressor* mpx, float sample) {
 	float avg_deviation = sqrtf(avg_power) * sqrtf(2);
 	float modulation_power = deviation_to_dbr(avg_deviation);
 
-	#ifdef BS412_DEBUG
-	if(mpx->average_counter % mpx->sample_rate == 0) {
-		debug_printf("MPX power: %.2f dBr with gain %.2fx (%.2f dBr)\n", modulation_power, mpx->gain, deviation_to_dbr(avg_deviation * mpx->gain));
-	}
-	#endif
-
 	if (mpx->average_counter >= mpx->sample_rate * 60) {
 		#ifdef BS412_DEBUG
 		debug_printf("Resetting MPX power measurement\n");
@@ -54,6 +48,21 @@ float bs412_compress(BS412Compressor* mpx, float sample) {
 		mpx->average = avg_power;
 		mpx->average_counter = 1;
 	}
+
+	if(mpx->target <= -100.0f) {
+		#ifdef BS412_DEBUG
+		if(mpx->average_counter % mpx->sample_rate == 0) {
+			debug_printf("MPX power: %.2f dBr (%.1f Hz)\n", modulation_power, avg_deviation);
+		}
+		#endif
+		return sample;
+	}
+
+	#ifdef BS412_DEBUG
+	if(mpx->average_counter % mpx->sample_rate == 0) {
+		debug_printf("MPX power: %.2f dBr with gain %.2fx (%.2f dBr)\n", modulation_power, mpx->gain, deviation_to_dbr(avg_deviation * mpx->gain));
+	}
+	#endif
 
 	float target_gain = powf(10.0f, (mpx->target - modulation_power) / 10.0f);
 	if (modulation_power > mpx->target) {
