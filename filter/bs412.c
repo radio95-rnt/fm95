@@ -60,7 +60,7 @@ float bs412_compress(BS412Compressor* mpx, float sample) {
 		if(mpx->can_compress == 0) mpx->second_counter++;
 	}
 
-	if(mpx->can_compress == 0 && mpx->sample_counter > 60) {
+	if(mpx->can_compress == 0 && mpx->second_counter > 60) {
 		#ifdef BS412_DEBUG
 		debug_printf("Can compress.\n");
 		#endif
