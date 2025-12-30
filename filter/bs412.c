@@ -86,6 +86,14 @@ float bs412_compress(BS412Compressor* mpx, float sample) {
 	float limit_threshold = dbr_to_deviation(mpx->target + 0.1f) / mpx->mpx_deviation;
     output_sample = soft_clip_tanh(output_sample, limit_threshold);
 
+	if(deviation_to_dbr(avg_deviation * mpx->gain) > mpx->target && deviation_to_dbr(avg_deviation) < mpx->target) {
+		// Gain is too much, reduce
+		float overshoot_dbr = deviation_to_dbr(avg_deviation * mpx->gain) - mpx->target;
+		float reduction_factor = powf(10.0f, -overshoot_dbr / 10.0f);
+		mpx->gain *= reduction_factor;
+		mpx->gain = fmaxf(0.0f, fminf(mpx->max, mpx->gain));
+	}
+
 	mpx->sample_counter++;
 	return output_sample;
 }
