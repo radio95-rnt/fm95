@@ -64,6 +64,7 @@ float bs412_compress(BS412Compressor* mpx, float sample) {
 		#ifdef BS412_DEBUG
 		debug_printf("Can compress.\n");
 		#endif
+		mpx->gain = powf(10.0f, (mpx->target - modulation_power) / 10.0f);
 		mpx->can_compress = 1;
 	}
 
