@@ -14,14 +14,15 @@
 typedef struct
 {
 	uint32_t mpx_deviation;
-	uint32_t average_counter;
 	uint32_t sample_rate;
+	uint32_t sample_counter;
 	float target;
 	float attack;
 	float release;
 	float max;
 	float gain;
-	double average;
+	double avg_power;
+	double alpha;
 } BS412Compressor;
 
 float dbr_to_deviation(float dbr);

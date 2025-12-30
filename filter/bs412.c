@@ -11,8 +11,8 @@ inline float deviation_to_dbr(float deviation) {
 
 void init_bs412(BS412Compressor* mpx, uint32_t mpx_deviation, float target_power, float attack, float release, float max, uint32_t sample_rate) {
 	mpx->mpx_deviation = mpx_deviation;
-	mpx->average_counter = 0;
-	mpx->average = 0;
+	mpx->avg_power = 0.0f;
+    mpx->alpha = 1.0f / (60.0f * sample_rate);
 	mpx->sample_rate = sample_rate;
 	mpx->attack = expf(-1.0f / (attack * sample_rate));
 	mpx->release = expf(-1.0f / (release * sample_rate));
@@ -34,33 +34,26 @@ static inline float soft_clip_tanh(float sample, float threshold) {
 }
 
 float bs412_compress(BS412Compressor* mpx, float sample) {
-	mpx->average += sample * sample * mpx->mpx_deviation * mpx->mpx_deviation;
-	mpx->average_counter++;
+	mpx->avg_power += mpx->alpha * ((sample * sample * mpx->mpx_deviation * mpx->mpx_deviation) - mpx->avg_power);
 
-	float avg_power = mpx->average / mpx->average_counter;
-	float avg_deviation = sqrtf(avg_power) * sqrtf(2);
+	float avg_deviation = sqrtf(mpx->avg_power);
 	float modulation_power = deviation_to_dbr(avg_deviation);
-
-	if (mpx->average_counter >= mpx->sample_rate * 60) {
-		#ifdef BS412_DEBUG
-		debug_printf("Resetting MPX power measurement\n");
-		#endif
-		mpx->average = avg_power;
-		mpx->average_counter = 1;
-	}
 
 	if(mpx->target <= -100.0f) {
 		#ifdef BS412_DEBUG
-		if(mpx->average_counter % mpx->sample_rate == 0) {
+		if(mpx->sample_counter > mpx->sample_rate) {
 			debug_printf("MPX power: %.2f dBr (%.1f Hz)\n", modulation_power, avg_deviation);
+			mpx->sample_counter = 0;
 		}
 		#endif
+		mpx->sample_counter++;
 		return sample;
 	}
 
 	#ifdef BS412_DEBUG
-	if(mpx->average_counter % mpx->sample_rate == 0) {
+	if(mpx->sample_counter > mpx->sample_rate) {
 		debug_printf("MPX power: %.2f dBr with gain %.2fx (%.2f dBr)\n", modulation_power, mpx->gain, deviation_to_dbr(avg_deviation * mpx->gain));
+		mpx->sample_counter = 0;
 	}
 	#endif
 
@@ -77,5 +70,6 @@ float bs412_compress(BS412Compressor* mpx, float sample) {
 	float limit_threshold = dbr_to_deviation(mpx->target + 0.1f) / mpx->mpx_deviation;
     output_sample = soft_clip_tanh(output_sample, limit_threshold);
 
+	mpx->sample_counter++;
 	return output_sample;
 }
