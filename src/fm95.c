@@ -489,9 +489,17 @@ void init_runtime(FM95_Runtime* runtime, const FM95_Config config) {
 	}
 
 	float last_gain = 0.0f;
-	if(runtime->bs412.sample_rate == config.sample_rate) last_gain = runtime->bs412.gain;
+	float last_power = 0.0f;
+	uint8_t last_compress = 0;
+	if(runtime->bs412.sample_rate == config.sample_rate) {
+		last_gain = runtime->bs412.gain;
+		last_power = runtime->bs412.avg_power;
+		last_compress = runtime->bs412.can_compress;
+	}
 	init_bs412(&runtime->bs412, config.mpx_deviation, config.mpx_power, config.bs412_attack, config.bs412_release, config.bs412_max, config.sample_rate);
 	runtime->bs412.gain = last_gain;
+	runtime->bs412.avg_power = last_power;
+	runtime->bs412.can_compress = last_compress;
 
 	init_stereo_encoder(&runtime->stencode, 4.0f, &runtime->osc, config.volumes.audio, config.volumes.pilot);
 
