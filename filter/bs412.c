@@ -6,7 +6,7 @@ inline float dbr_to_deviation(float dbr) {
 
 inline float deviation_to_dbr(float deviation) {
 	if (deviation < 1e-6f) return -100.0f;
-	return 10*log10f(deviation/19000);
+	return 10*log10f((deviation*deviation)/((19000.0f / sqrtf(2.0f)) * (19000.0f / sqrtf(2.0f))));
 }
 
 void init_bs412(BS412Compressor* mpx, uint32_t mpx_deviation, float target_power, float attack, float release, float max, uint32_t sample_rate) {
@@ -38,7 +38,7 @@ static inline float soft_clip_tanh(float sample, float threshold) {
 float bs412_compress(BS412Compressor* mpx, float sample) {
 	mpx->avg_power += mpx->alpha * ((sample * sample * mpx->mpx_deviation * mpx->mpx_deviation) - mpx->avg_power);
 
-	float avg_deviation = sqrtf(mpx->avg_power) * sqrtf(2);
+	float avg_deviation = sqrtf(mpx->avg_power);
 	float modulation_power = deviation_to_dbr(avg_deviation);
 
 	if(mpx->target <= -100.0f) {
