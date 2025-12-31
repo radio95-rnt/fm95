@@ -9,7 +9,7 @@ inline float deviation_to_dbr(float deviation) {
 	return 10*log10f((deviation*deviation)/((19000.0f / sqrtf(2.0f)) * (19000.0f / sqrtf(2.0f))));
 }
 
-void init_bs412(BS412Compressor* mpx, uint32_t mpx_deviation, float target_power, float attack, float release, float max, uint32_t sample_rate) {
+void init_bs412(BS412Compressor* mpx, uint32_t mpx_deviation, float target_power, float attack, float release, uint32_t sample_rate) {
 	mpx->mpx_deviation = mpx_deviation;
 	mpx->avg_power = 0.0f;
     mpx->alpha = 1.0f / (60.0f * sample_rate);
@@ -18,7 +18,6 @@ void init_bs412(BS412Compressor* mpx, uint32_t mpx_deviation, float target_power
 	mpx->release = expf(-1.0f / (release * sample_rate));
 	mpx->target = deviation_to_dbr(19000.0f * pow(10.0, target_power / 10.0)); // target is expected to not be our rms format
 	mpx->gain = 0.0f;
-	mpx->max = max;
 	mpx->can_compress = 0;
 	mpx->second_counter = 0;
 	#ifdef BS412_DEBUG
@@ -71,15 +70,15 @@ float bs412_compress(BS412Compressor* mpx, float sample) {
 		mpx->gain = mpx->release * mpx->gain + (1.0f - mpx->release) * target_gain;
 	}
 	
-	mpx->gain = fmaxf(0.0f, fminf(mpx->max, mpx->gain));
+	mpx->gain = fmaxf(0.0f, fminf(sqrtf(2), mpx->gain));
 
-	float output_sample = sample * mpx->gain * sqrtf(2);
+	float output_sample = sample * mpx->gain;
 	if(deviation_to_dbr(avg_deviation * mpx->gain) > mpx->target && deviation_to_dbr(avg_deviation) < mpx->target) {
 		// Gain is too much, reduce
 		float overshoot_dbr = deviation_to_dbr(avg_deviation * mpx->gain) - mpx->target;
 		float reduction_factor = powf(10.0f, -overshoot_dbr / 10.0f);
 		mpx->gain *= reduction_factor;
-		mpx->gain = fmaxf(0.0f, fminf(mpx->max, mpx->gain));
+		mpx->gain = fmaxf(0.0f, fminf(sqrtf(2), mpx->gain));
 	}
 
 	mpx->sample_counter++;

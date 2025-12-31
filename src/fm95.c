@@ -73,7 +73,6 @@ typedef struct
 	float agc_min;
 	float bs412_attack;
 	float bs412_release;
-	float bs412_max;
 	float lpf_cutoff;
 } FM95_Config;
 
@@ -345,8 +344,6 @@ static int config_handler(void* user, const char* section, const char* name, con
         pconfig->audio_preamp = strtof(value, NULL);
     } else if (MATCH("fm95", "deviation")) {
         pconfig->audio_deviation = strtof(value, NULL);
-	} else if(MATCH("fm95", "bs412_max")) {
-		pconfig->bs412_max = strtof(value, NULL);
 	} else if(MATCH("fm95", "agc_target")) {
 		pconfig->agc_target = strtof(value, NULL);
 	} else if(MATCH("fm95", "agc_attack")) {
@@ -501,7 +498,7 @@ void init_runtime(FM95_Runtime* runtime, const FM95_Config config) {
 		last_sample_counter = runtime->bs412.sample_counter;
 		last_second_counter = runtime->bs412.second_counter;
 	}
-	init_bs412(&runtime->bs412, config.mpx_deviation, config.mpx_power, config.bs412_attack, config.bs412_release, config.bs412_max, config.sample_rate);
+	init_bs412(&runtime->bs412, config.mpx_deviation, config.mpx_power, config.bs412_attack, config.bs412_release, config.sample_rate);
 	runtime->bs412.gain = last_gain;
 	runtime->bs412.avg_power = last_power;
 	runtime->bs412.can_compress = last_compress;
@@ -557,7 +554,6 @@ int main(int argc, char **argv) {
 		.agc_max = 1.5f,
 		.bs412_attack = 0.05f,
 		.bs412_release = 0.025,
-		.bs412_max = 1.0f,
 		.lpf_cutoff = 15000,
 	};
 
