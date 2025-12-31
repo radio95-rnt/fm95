@@ -165,6 +165,7 @@ int run_fm95(const FM95_Config config, FM95_Runtime* runtime) {
 			for (int i = 0; i < BUFFER_SIZE; i++) {
 				float sample = get_oscillator_sin_sample(&runtime->osc);
 				if(config.calibration == 2) sample = (sample > 0.0f) ? 1.0f : -1.0f; // Sine wave to square wave filter, 50% duty cycle
+				else if(config.calibration == 3) sample *= (19000/config.mpx_deviation);
 				output[i] = sample*config.master_volume;
 			}
 			if((pulse_error = write_PulseOutputDevice(&runtime->output_device, output, sizeof(output)))) { // get output from the function and assign it into pulse_error, this comment to avoid confusion
@@ -473,7 +474,7 @@ int setup_audio(FM95_Runtime* runtime, const FM95_DeviceNames dv_names, const FM
 
 void init_runtime(FM95_Runtime* runtime, const FM95_Config config) {	
 	if(config.calibration != 0) {
-		init_oscillator(&runtime->osc, (config.calibration == 2) ? 60 : 400, config.sample_rate);
+		init_oscillator(&runtime->osc, (config.calibration == 2) ? 60 : ((config.calibration == 1) ? 400 : 19000), config.sample_rate);
 		return;
 	}
 	else init_oscillator(&runtime->osc, 4750, config.sample_rate);
