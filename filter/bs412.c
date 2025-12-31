@@ -1,7 +1,7 @@
 #include "bs412.h"
 
 inline float dbr_to_deviation(float dbr) {
-	return 19000.0f * pow(10.0, dbr / 10.0);
+	return 19000.0f * sqrtf(pow(10.0, dbr / 10.0));
 }
 
 inline float deviation_to_dbr(float deviation) {
@@ -16,7 +16,7 @@ void init_bs412(BS412Compressor* mpx, uint32_t mpx_deviation, float target_power
 	mpx->sample_rate = sample_rate;
 	mpx->attack = expf(-1.0f / (attack * sample_rate));
 	mpx->release = expf(-1.0f / (release * sample_rate));
-	mpx->target = target_power;
+	mpx->target = deviation_to_dbr(19000.0f * pow(10.0, target_power / 10.0)); // target is expected to not be our rms format
 	mpx->gain = 0.0f;
 	mpx->max = max;
 	mpx->can_compress = 0;
