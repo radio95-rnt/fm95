@@ -248,7 +248,7 @@ int run_fm95(const FM95_Config config, FM95_Runtime* runtime) {
 
 			mpx = bs412_compress(&runtime->bs412, mpx+mpx_in[i]);
 
-			output[i] = hard_clip(mpx*config.master_volume, 1.0); // Ensure peak deviation of 75 khz (or the set deviation), assuming we're calibrated correctly
+			output[i] = hard_clip(mpx, 1.0)*config.master_volume; // Ensure peak deviation of 75 khz (or the set deviation), assuming we're calibrated correctly
 			advance_oscillator(&runtime->osc);
 
 			output_hq[2*i+0] = hard_clip(l, 1.0f);
