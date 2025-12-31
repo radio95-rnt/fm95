@@ -1,8 +1,8 @@
 #include "bs412.h"
 
-inline float dbr_to_deviation(float dbr) {
-	return 19000.0f * sqrtf(pow(10.0, dbr / 10.0));
-}
+// inline float dbr_to_deviation(float dbr) {
+// 	return 19000.0f * sqrtf(pow(10.0, dbr / 10.0));
+// }
 
 inline float deviation_to_dbr(float deviation) {
 	if (deviation < 1e-6f) return -100.0f;
@@ -24,15 +24,6 @@ void init_bs412(BS412Compressor* mpx, uint32_t mpx_deviation, float target_power
 	#ifdef BS412_DEBUG
 	debug_printf("Initialized MPX power measurement with sample rate: %d\n", sample_rate);
 	#endif
-}
-
-static inline float soft_clip_tanh(float sample, float threshold) {
-    if (fabsf(sample) <= threshold) {
-        return sample;  // Linear region
-    }
-    float sign = (sample >= 0) ? 1.0f : -1.0f;
-    float excess = fabsf(sample) - threshold;
-    return sign * (threshold + tanhf(excess) * (1.0f - threshold));
 }
 
 float bs412_compress(BS412Compressor* mpx, float sample) {
@@ -83,9 +74,6 @@ float bs412_compress(BS412Compressor* mpx, float sample) {
 	mpx->gain = fmaxf(0.0f, fminf(mpx->max, mpx->gain));
 
 	float output_sample = sample * mpx->gain;
-	float limit_threshold = dbr_to_deviation(mpx->target + 0.1f) / mpx->mpx_deviation;
-    output_sample = soft_clip_tanh(output_sample, limit_threshold);
-
 	if(deviation_to_dbr(avg_deviation * mpx->gain) > mpx->target && deviation_to_dbr(avg_deviation) < mpx->target) {
 		// Gain is too much, reduce
 		float overshoot_dbr = deviation_to_dbr(avg_deviation * mpx->gain) - mpx->target;
