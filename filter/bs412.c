@@ -1,5 +1,7 @@
 #include "bs412.h"
 
+#define BS412_TIME 60
+
 // inline float dbr_to_deviation(float dbr) {
 // 	return 19000.0f * sqrtf(pow(10.0, dbr / 10.0));
 // }
@@ -12,7 +14,7 @@ inline float deviation_to_dbr(float deviation) {
 void init_bs412(BS412Compressor* mpx, uint32_t mpx_deviation, float target_power, float attack, float release, uint32_t sample_rate) {
 	mpx->mpx_deviation = mpx_deviation;
 	mpx->avg_power = 0.0f;
-    mpx->alpha = 1.0f / (60.0f * sample_rate);
+    mpx->alpha = 1.0f / (BS412_TIME * sample_rate);
 	mpx->sample_rate = sample_rate;
 	mpx->attack = expf(-1.0f / (attack * sample_rate));
 	mpx->release = expf(-1.0f / (release * sample_rate));
@@ -50,7 +52,7 @@ float bs412_compress(BS412Compressor* mpx, float sample) {
 		if(mpx->can_compress == 0) mpx->second_counter++;
 	}
 
-	if(mpx->can_compress == 0 && mpx->second_counter > 60) {
+	if(mpx->can_compress == 0 && mpx->second_counter > BS412_TIME) {
 		#ifdef BS412_DEBUG
 		debug_printf("Can compress.\n");
 		#endif
