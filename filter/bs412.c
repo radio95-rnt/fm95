@@ -22,13 +22,14 @@ void init_bs412(BS412Compressor* mpx, uint32_t mpx_deviation, float target_power
 	mpx->gain = 0.0f;
 	mpx->can_compress = 0;
 	mpx->second_counter = 0;
+	mpx->last_output = 0.0f;
 	#ifdef BS412_DEBUG
 	debug_printf("Initialized MPX power measurement with sample rate: %d\n", sample_rate);
 	#endif
 }
 
 float bs412_compress(BS412Compressor* mpx, float sample) {
-	mpx->avg_power += mpx->alpha * ((sample * sample * mpx->mpx_deviation * mpx->mpx_deviation) - mpx->avg_power);
+	mpx->avg_power += mpx->alpha * ((mpx->last_output * mpx->last_output * mpx->mpx_deviation * mpx->mpx_deviation) - mpx->avg_power);
 
 	float avg_deviation = sqrtf(mpx->avg_power);
 	float modulation_power = deviation_to_dbr(avg_deviation);
@@ -84,5 +85,7 @@ float bs412_compress(BS412Compressor* mpx, float sample) {
 	}
 
 	mpx->sample_counter++;
+
+	mpx->last_output = output_sample;
 	return output_sample;
 }
