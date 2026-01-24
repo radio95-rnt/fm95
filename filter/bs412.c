@@ -50,7 +50,6 @@ float bs412_compress(BS412Compressor* mpx, float sample) {
 		debug_printf("MPX power: %.2f dBr with gain %.2fx (%.2f dBr)\n", modulation_power, mpx->gain, deviation_to_dbr(avg_deviation * mpx->gain));
 		#endif
 		mpx->sample_counter = 0;
-		if(mpx->can_compress == 0) mpx->second_counter++;
 	}
 
 	if(mpx->can_compress == 0 && mpx->second_counter > BS412_TIME) {
@@ -73,7 +72,7 @@ float bs412_compress(BS412Compressor* mpx, float sample) {
 		mpx->gain = mpx->release * mpx->gain + (1.0f - mpx->release) * target_gain;
 	}
 	
-	mpx->gain = fmaxf(0.0f, fminf(sqrtf(2), mpx->gain));
+	mpx->gain = fmaxf(0.0f, fminf(sqrtf(2)*2.0f, mpx->gain));
 
 	float output_sample = sample * mpx->gain;
 	if(deviation_to_dbr(avg_deviation * mpx->gain) > mpx->target && deviation_to_dbr(avg_deviation) < mpx->target) {
@@ -81,7 +80,7 @@ float bs412_compress(BS412Compressor* mpx, float sample) {
 		float overshoot_dbr = deviation_to_dbr(avg_deviation * mpx->gain) - mpx->target;
 		float reduction_factor = powf(10.0f, -overshoot_dbr / 10.0f);
 		mpx->gain *= reduction_factor;
-		mpx->gain = fmaxf(0.0f, fminf(sqrtf(2), mpx->gain));
+		mpx->gain = fmaxf(0.0f, fminf(sqrtf(2)*2.0f, mpx->gain));
 	}
 
 	mpx->sample_counter++;
