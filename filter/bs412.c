@@ -50,6 +50,7 @@ float bs412_compress(BS412Compressor* mpx, float sample) {
 		debug_printf("MPX power: %.2f dBr with gain %.2fx (%.2f dBr)\n", modulation_power, mpx->gain, deviation_to_dbr(avg_deviation * mpx->gain));
 		#endif
 		mpx->sample_counter = 0;
+		if(mpx->can_compress == 0) mpx->second_counter++;
 	}
 
 	if(mpx->can_compress == 0 && mpx->second_counter > BS412_TIME) {
