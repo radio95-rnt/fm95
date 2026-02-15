@@ -456,7 +456,7 @@ void init_runtime(FM95_Runtime* runtime, const FM95_Config config) {
 	}
 
 	if(config.stereo_ssb) {
-		for(int i = 0; i < config.rds_streams; i++) init_delay_line(&runtime->rds_delays[i], config.stereo_ssb*2+1);
+		for(int i = 0; i < config.rds_streams; i++) init_delay_line(&runtime->rds_delays[i], config.stereo_ssb*2);
 	}
 
 	if(config.preemphasis != 0) {

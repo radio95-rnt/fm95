@@ -7,8 +7,8 @@ void init_stereo_encoder(StereoEncoder* st, uint8_t stereo_ssb, uint8_t multipli
     st->pilot_volume = pilot_volume;
     st->audio_volume = audio_volume;
     if(stereo_ssb) {
-        init_delay_line(&st->delay_pilot, stereo_ssb*2+1);
-        init_delay_line(&st->delay, stereo_ssb*2+1);
+        init_delay_line(&st->delay_pilot, stereo_ssb*2);
+        init_delay_line(&st->delay, stereo_ssb*2);
         st->stereo_hilbert = firhilbf_create(stereo_ssb, 60);
     } else st->stereo_hilbert = NULL;
 }
