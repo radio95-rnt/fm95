@@ -7,10 +7,8 @@ void init_stereo_encoder(StereoEncoder* st, uint8_t multiplier, Oscillator* osc,
     st->pilot_volume = pilot_volume;
     st->audio_volume = audio_volume;
     #ifdef STEREO_SSB
-    init_delay_line(&st->delay_pilot, osc->sample_rate);
-    init_delay_line(&st->delay, osc->sample_rate);
-    set_delay_line(&st->delay_pilot, STEREO_SSB*2+1);
-    set_delay_line(&st->delay, STEREO_SSB*2+1);
+    init_delay_line(&st->delay_pilot, STEREO_SSB*2+1);
+    init_delay_line(&st->delay, STEREO_SSB*2+1);
     #endif
 }
 

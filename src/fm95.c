@@ -83,13 +83,12 @@ typedef struct
 	float* rds_in;
 	Oscillator osc;
 	iirfilt_rrrf lpf_l, lpf_r;
-	#ifdef STEREO_SSB
 	firhilbf stereo_hilbert;
-	#endif
 	ResistorCapacitor preemp_l, preemp_r;
 	BS412Compressor bs412;
 	StereoEncoder stencode;
 	AGC agc;
+	delay_line_t rds_delays[4];
 } FM95_Runtime;
 
 typedef struct {
@@ -238,11 +237,7 @@ int run_fm95(const FM95_Config config, FM95_Runtime* runtime) {
 				mod_r = apply_preemphasis(&runtime->preemp_r, mod_r);
 			}
 
-#ifdef STEREO_SSB
 			mpx = stereo_encode(&runtime->stencode, config.stereo, mod_l, mod_r, &runtime->stereo_hilbert);
-#else
-			mpx = stereo_encode(&runtime->stencode, config.stereo, mod_l, mod_r);
-#endif
 
 			if(rds_on) {
 				float rds_level = config.volumes.rds;
@@ -250,7 +245,11 @@ int run_fm95(const FM95_Config config, FM95_Runtime* runtime) {
 					uint8_t osc_stream = 12 + stream;
 					if(osc_stream >= 13) osc_stream++;
 
+#ifdef STEREO_SSB
+					mpx += (runtime->rds_in[config.rds_streams * i + stream] * delay_line(&runtime->rds_delays[stream], get_oscillator_cos_multiplier_ni(&runtime->osc, osc_stream))) * rds_level;
+#else
 					mpx += (runtime->rds_in[config.rds_streams * i + stream] * get_oscillator_cos_multiplier_ni(&runtime->osc, osc_stream)) * rds_level;
+#endif
 
 					rds_level *= config.volumes.rds_step; // Prepare level for the next stream
 				}
@@ -494,6 +493,8 @@ void init_runtime(FM95_Runtime* runtime, const FM95_Config config) {
 
 	#ifdef STEREO_SSB
 	runtime->stereo_hilbert = firhilbf_create(STEREO_SSB, 80);
+
+	for(int i = 0; i < config.rds_streams; i++) init_delay_line(&runtime->rds_delays[i], STEREO_SSB*2+1);
 	#endif
 
 	if(config.preemphasis != 0) {
