@@ -5,8 +5,8 @@
 
 #define DEFAULT_INI_PATH "/etc/fm95.conf"
 
-#define buffer_maxlength 73728
-#define buffer_tlength_fragsize 73728
+#define buffer_maxlength 64512
+#define buffer_tlength_fragsize 64512
 
 #include "../dsp/oscillator.h"
 #include "../filter/iir.h"
@@ -14,7 +14,7 @@
 #include "../filter/bs412.h"
 #include "../filter/gain_control.h"
 
-#define BUFFER_SIZE 6144 // This defines how many samples to process at a time, because the loop here is this: get signal -> process signal -> output signal, and when we get signal we actually get BUFFER_SIZE of them
+#define BUFFER_SIZE 7168 // This defines how many samples to process at a time, because the loop here is this: get signal -> process signal -> output signal, and when we get signal we actually get BUFFER_SIZE of them
 
 #include "../io/audio.h"
 
@@ -47,6 +47,7 @@ typedef struct
 
 	FM95_Volumes volumes;
 	bool stereo;
+	int stereo_ssb;
 
 	uint8_t rds_streams;
 
@@ -83,7 +84,6 @@ typedef struct
 	float* rds_in;
 	Oscillator osc;
 	iirfilt_rrrf lpf_l, lpf_r;
-	firhilbf stereo_hilbert;
 	ResistorCapacitor preemp_l, preemp_r;
 	BS412Compressor bs412;
 	StereoEncoder stencode;
@@ -142,10 +142,7 @@ void cleanup_runtime(FM95_Runtime* runtime, const FM95_Config config) {
 		iirfilt_rrrf_destroy(runtime->lpf_l);
 		iirfilt_rrrf_destroy(runtime->lpf_r);
 	}
-	#ifdef STEREO_SSB
-	firhilbf_destroy(runtime->stereo_hilbert);
 	exit_stereo_encoder(&runtime->stencode);
-	#endif
 }
 
 void cleanup_audio_runtime(FM95_Runtime *rt, const FM95_Options options) {
@@ -213,7 +210,7 @@ int run_fm95(const FM95_Config config, FM95_Runtime* runtime) {
 
 			float l = audio_stereo_input[2*i+0]*config.audio_preamp;
 			float r = audio_stereo_input[2*i+1]*config.audio_preamp;
-			
+
 			if(config.agc_max != 0.0) {
 				float agc_gain = process_agc(&runtime->agc, 0.5f * (fabsf(l) + fabsf(r)));
 				l *= agc_gain;
@@ -231,13 +228,13 @@ int run_fm95(const FM95_Config config, FM95_Runtime* runtime) {
 				iirfilt_rrrf_execute(runtime->lpf_l, l, &mod_l);
 				iirfilt_rrrf_execute(runtime->lpf_r, r, &mod_r);
 			}
-			
+
 			if(config.preemphasis != 0) {
 				mod_l = apply_preemphasis(&runtime->preemp_l, mod_l);
 				mod_r = apply_preemphasis(&runtime->preemp_r, mod_r);
 			}
 
-			mpx = stereo_encode(&runtime->stencode, config.stereo, mod_l, mod_r, &runtime->stereo_hilbert);
+			mpx = stereo_encode(&runtime->stencode, config.stereo, mod_l, mod_r);
 
 			if(rds_on) {
 				float rds_level = config.volumes.rds;
@@ -245,11 +242,8 @@ int run_fm95(const FM95_Config config, FM95_Runtime* runtime) {
 					uint8_t osc_stream = 12 + stream;
 					if(osc_stream >= 13) osc_stream++;
 
-#ifdef STEREO_SSB
-					mpx += (runtime->rds_in[config.rds_streams * i + stream] * delay_line(&runtime->rds_delays[stream], get_oscillator_cos_multiplier_ni(&runtime->osc, osc_stream))) * rds_level;
-#else
-					mpx += (runtime->rds_in[config.rds_streams * i + stream] * get_oscillator_cos_multiplier_ni(&runtime->osc, osc_stream)) * rds_level;
-#endif
+					if(config.stereo_ssb) mpx += (runtime->rds_in[config.rds_streams * i + stream] * delay_line(&runtime->rds_delays[stream], get_oscillator_cos_multiplier_ni(&runtime->osc, osc_stream))) * rds_level;
+					else mpx += (runtime->rds_in[config.rds_streams * i + stream] * get_oscillator_cos_multiplier_ni(&runtime->osc, osc_stream)) * rds_level;
 
 					rds_level *= config.volumes.rds_step; // Prepare level for the next stream
 				}
@@ -370,6 +364,8 @@ static int config_handler(void* user, const char* section, const char* name, con
 		pconfig->bs412_release = strtof(value, NULL);
 	} else if(MATCH("advanced", "lpf_order")) {
 		pconfig->lpf_order = atoi(value);
+	} else if(MATCH("advanced", "stereo_ssb")) {
+		pconfig->stereo_ssb = atoi(value);
 	} else if(MATCH("advanced", "preemp_unity")) {
 		pconfig->preemp_unity_freq = strtof(value, NULL);
 	} else if(MATCH("advanced", "sample_rate")) {
@@ -479,7 +475,7 @@ int setup_audio(FM95_Runtime* runtime, const FM95_DeviceNames dv_names, const FM
 	return 0;
 }
 
-void init_runtime(FM95_Runtime* runtime, const FM95_Config config) {	
+void init_runtime(FM95_Runtime* runtime, const FM95_Config config) {
 	if(config.calibration != 0) {
 		init_oscillator(&runtime->osc, (config.calibration == 2) ? 60 : ((config.calibration == 1) ? 400 : 19000), config.sample_rate);
 		return;
@@ -487,15 +483,13 @@ void init_runtime(FM95_Runtime* runtime, const FM95_Config config) {
 	else init_oscillator(&runtime->osc, 4750, config.sample_rate);
 
 	if(config.lpf_cutoff != 0) {
-		runtime->lpf_l = iirfilt_rrrf_create_prototype(LIQUID_IIRDES_CHEBY2, LIQUID_IIRDES_LOWPASS, LIQUID_IIRDES_SOS, config.lpf_order, (config.lpf_cutoff/config.sample_rate), 0.0f, 1.0f, 60.0f);
-		runtime->lpf_r = iirfilt_rrrf_create_prototype(LIQUID_IIRDES_CHEBY2, LIQUID_IIRDES_LOWPASS, LIQUID_IIRDES_SOS, config.lpf_order, (config.lpf_cutoff/config.sample_rate), 0.0f, 1.0f, 60.0f);
+		runtime->lpf_l = iirfilt_rrrf_create_prototype(LIQUID_IIRDES_CHEBY2, LIQUID_IIRDES_LOWPASS, LIQUID_IIRDES_SOS, config.lpf_order, (config.lpf_cutoff/config.sample_rate), 0.0f, 1.0f, 40.0f);
+		runtime->lpf_r = iirfilt_rrrf_create_prototype(LIQUID_IIRDES_CHEBY2, LIQUID_IIRDES_LOWPASS, LIQUID_IIRDES_SOS, config.lpf_order, (config.lpf_cutoff/config.sample_rate), 0.0f, 1.0f, 40.0f);
 	}
 
-	#ifdef STEREO_SSB
-	runtime->stereo_hilbert = firhilbf_create(STEREO_SSB, 80);
-
-	for(int i = 0; i < config.rds_streams; i++) init_delay_line(&runtime->rds_delays[i], STEREO_SSB*2+1);
-	#endif
+	if(config.stereo_ssb) {
+		for(int i = 0; i < config.rds_streams; i++) init_delay_line(&runtime->rds_delays[i], config.stereo_ssb*2+1);
+	}
 
 	if(config.preemphasis != 0) {
 		init_preemphasis(&runtime->preemp_l, (float)config.preemphasis * 1.0e-6f, config.sample_rate, config.preemp_unity_freq);
@@ -521,7 +515,7 @@ void init_runtime(FM95_Runtime* runtime, const FM95_Config config) {
 	runtime->bs412.sample_counter = last_sample_counter;
 	runtime->bs412.second_counter = last_second_counter;
 
-	init_stereo_encoder(&runtime->stencode, 4.0f, &runtime->osc, config.volumes.audio, config.volumes.pilot);
+	init_stereo_encoder(&runtime->stencode, config.stereo_ssb, 4.0f, &runtime->osc, config.volumes.audio, config.volumes.pilot);
 
 	if(config.agc_max != 0.0) {
 		last_gain = 1.0f;
@@ -544,6 +538,7 @@ int main(int argc, char **argv) {
 			.headroom = 0.05f
 		},
 		.stereo = 1,
+		.stereo_ssb = 0,
 
 		.rds_streams = 1, // You have to match this with RDS95, otherwise may god have mercy on your RDS decoders
 
