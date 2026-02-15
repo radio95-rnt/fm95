@@ -30,7 +30,9 @@ void init_bs412(BS412Compressor* mpx, uint32_t mpx_deviation, float target_power
 	#endif
 }
 
-float bs412_compress(BS412Compressor* mpx, float sample) {
+float bs412_compress(BS412Compressor* mpx, float audio, float sample_mpx) {
+	float combined = audio + sample_mpx;
+
 	mpx->avg_power += mpx->alpha * ((mpx->last_output * mpx->last_output * mpx->mpx_deviation * mpx->mpx_deviation) - mpx->avg_power);
 
 	float avg_deviation = sqrtf(mpx->avg_power);
@@ -44,7 +46,7 @@ float bs412_compress(BS412Compressor* mpx, float sample) {
 		}
 		#endif
 		mpx->sample_counter++;
-		return sample;
+		return combined;
 	}
 
 	if(mpx->sample_counter > mpx->sample_rate) {
@@ -65,7 +67,7 @@ float bs412_compress(BS412Compressor* mpx, float sample) {
 
 	if(mpx->can_compress == 0) {
 		mpx->sample_counter++;
-		return sample;
+		return combined;
 	}
 
 	float target_gain = powf(10.0f, (mpx->target - modulation_power) / 10.0f);
@@ -77,7 +79,7 @@ float bs412_compress(BS412Compressor* mpx, float sample) {
 	
 	mpx->gain = fmaxf(0.0f, fminf(2.0f, mpx->gain));
 
-	float output_sample = sample * mpx->gain;
+	float output_sample = (audio * mpx->gain) + mpx;
 	if(deviation_to_dbr(avg_deviation * mpx->gain) > mpx->target && deviation_to_dbr(avg_deviation) < mpx->target) {
 		// Gain is too much, reduce
 		float overshoot_dbr = deviation_to_dbr(avg_deviation * mpx->gain) - mpx->target;

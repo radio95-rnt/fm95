@@ -199,6 +199,7 @@ int run_fm95(const FM95_Config config, FM95_Runtime* runtime) {
 
 		for (uint16_t i = 0; i < BUFFER_SIZE; i++) {
 			float mpx = 0.0f;
+			float audio = 0.0f;
 
 			float l = audio_stereo_input[2*i+0]*config.audio_preamp;
 			float r = audio_stereo_input[2*i+1]*config.audio_preamp;
@@ -226,7 +227,7 @@ int run_fm95(const FM95_Config config, FM95_Runtime* runtime) {
 				mod_r = apply_preemphasis(&runtime->preemp_r, mod_r);
 			}
 
-			mpx = stereo_encode(&runtime->stencode, config.stereo, mod_l, mod_r);
+			mpx = stereo_encode(&runtime->stencode, config.stereo, mod_l, mod_r, &audio);
 
 			if(rds_on) {
 				float rds_level = config.volumes.rds;
@@ -234,14 +235,15 @@ int run_fm95(const FM95_Config config, FM95_Runtime* runtime) {
 					uint8_t osc_stream = 12 + stream;
 					if(osc_stream >= 13) osc_stream++;
 
-					if(config.stereo_ssb) mpx += (runtime->rds_in[config.rds_streams * i + stream] * delay_line(&runtime->rds_delays[stream], get_oscillator_cos_multiplier_ni(&runtime->osc, osc_stream))) * rds_level;
-					else mpx += (runtime->rds_in[config.rds_streams * i + stream] * get_oscillator_cos_multiplier_ni(&runtime->osc, osc_stream)) * rds_level;
+					float carrier = get_oscillator_cos_multiplier_ni(&runtime->osc, osc_stream);
+					if(config.stereo_ssb) carrier = delay_line(&runtime->rds_delays[stream], carrier);
+					mpx += (runtime->rds_in[config.rds_streams * i + stream] * carrier) * rds_level;
 
 					rds_level *= config.volumes.rds_step; // Prepare level for the next stream
 				}
 			}
 
-			mpx = bs412_compress(&runtime->bs412, mpx+mpx_in[i]);
+			mpx = bs412_compress(&runtime->bs412, audio, mpx+mpx_in[i]);
 
 			output[i] = hard_clip(mpx, 1.0)*config.master_volume; // Ensure peak deviation of 75 khz (or the set deviation), assuming we're calibrated correctly
 			advance_oscillator(&runtime->osc);

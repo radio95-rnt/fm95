@@ -13,7 +13,7 @@ void init_stereo_encoder(StereoEncoder* st, uint8_t stereo_ssb, uint8_t multipli
     } else st->stereo_hilbert = NULL;
 }
 
-float stereo_encode(StereoEncoder* st, uint8_t enabled, float left, float right) {
+float stereo_encode(StereoEncoder* st, uint8_t enabled, float left, float right, float *audio) {
     float mid = (left+right) * 0.5f;
     if(!enabled) return mid * st->audio_volume;
 
@@ -35,12 +35,12 @@ float stereo_encode(StereoEncoder* st, uint8_t enabled, float left, float right)
     }
     float signalx2 = get_oscillator_sin_multiplier_ni(st->osc, st->multiplier * 2.0f);
 
+    *audio = (mid*half_audio);
     if(st->stereo_hilbert) {
         float stereo = (crealf(stereo_hilbert) * signalx2cos) + (cimagf(stereo_hilbert) * signalx2);
-        return (mid*half_audio) + (signalx1*st->pilot_volume) + (stereo * half_audio);
-    } else {
-        return (mid*half_audio) + (signalx1*st->pilot_volume) + ((side*signalx2) * half_audio);
-    }
+        *audio += (stereo * half_audio)
+    } else *audio += ((side*signalx2) * half_audio);
+    return (signalx1*st->pilot_volume);
 }
 
 void exit_stereo_encoder(StereoEncoder* st) {
