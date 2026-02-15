@@ -238,7 +238,11 @@ int run_fm95(const FM95_Config config, FM95_Runtime* runtime) {
 				mod_r = apply_preemphasis(&runtime->preemp_r, mod_r);
 			}
 
+#ifdef STEREO_SSB
+			mpx = stereo_encode(&runtime->stencode, config.stereo, mod_l, mod_r, &runtime.hilbert);
+#else
 			mpx = stereo_encode(&runtime->stencode, config.stereo, mod_l, mod_r);
+#endif
 
 			if(rds_on) {
 				float rds_level = config.volumes.rds;

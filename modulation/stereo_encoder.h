@@ -30,7 +30,7 @@ typedef struct
 void init_stereo_encoder(StereoEncoder *st, uint8_t multiplier, Oscillator *osc, float audio_volume, float pilot_volume);
 
 #ifdef STEREO_SSB
-float stereo_encode(StereoEncoder* st, uint8_t enabled, float left, float right, firhilbf hilbert);
+float stereo_encode(StereoEncoder* st, uint8_t enabled, float left, float right, firhilbf *hilbert);
 #else
 float stereo_encode(StereoEncoder* st, uint8_t enabled, float left, float right);
 #endif

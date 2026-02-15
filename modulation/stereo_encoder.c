@@ -33,7 +33,7 @@ void init_stereo_encoder(StereoEncoder* st, uint8_t multiplier, Oscillator* osc,
 }
 
 #ifdef STEREO_SSB
-float stereo_encode(StereoEncoder* st, uint8_t enabled, float left, float right, firhilbf hilbert) {
+float stereo_encode(StereoEncoder* st, uint8_t enabled, float left, float right, firhilbf *hilbert) {
 #else
 float stereo_encode(StereoEncoder* st, uint8_t enabled, float left, float right) {
 #endif
@@ -47,7 +47,7 @@ float stereo_encode(StereoEncoder* st, uint8_t enabled, float left, float right)
 
 #ifdef STEREO_SSB
     float complex stereo_hilbert;
-    firhilbf_r2c_execute(hilbert, side, &stereo_hilbert);
+    firhilbf_r2c_execute(*hilbert, side, &stereo_hilbert);
     float signalx2cos = get_oscillator_cos_multiplier_ni(st->osc, st->multiplier * 2.0f);
 #endif
     
