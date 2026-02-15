@@ -30,5 +30,5 @@ typedef struct
 // float dbr_to_deviation(float dbr);
 float deviation_to_dbr(float deviation);
 
-void init_bs412(BS412Compressor *mpx, uint32_t mpx_deviation, float target_power, float attack, float release, uint32_t sample_rate);
-float bs412_compress(BS412Compressor *mpx, float audio, float sample_mpx);
+void init_bs412(BS412Compressor *comp, uint32_t mpx_deviation, float target_power, float attack, float release, uint32_t sample_rate);
+float bs412_compress(BS412Compressor *comp, float audio, float sample_mpx);
