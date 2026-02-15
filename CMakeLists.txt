@@ -28,7 +28,6 @@ add_library(libfmmodulation OBJECT ${MODULATION_FILES})
 add_library(libfmdsp OBJECT ${DSP_FILES})
 add_library(libfmio OBJECT ${IO_FILES})
 
-
 # Define DEBUG macro for Debug builds on libraries
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     # target_compile_definitions(libfm PRIVATE DEBUG=1)
@@ -37,7 +36,7 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     target_compile_definitions(libfmdsp PRIVATE DEBUG=1)
     target_compile_definitions(libfmio PRIVATE DEBUG=1)
 endif()
-
+target_link_libraries(libfmfilter PUBLIC liquid m)
 foreach(SRC_FILE ${SRC_FILES})
     get_filename_component(EXEC_NAME ${SRC_FILE} NAME_WE)
 
