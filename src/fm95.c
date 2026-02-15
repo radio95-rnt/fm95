@@ -27,22 +27,18 @@ static volatile sig_atomic_t to_reload = 0;
 
 inline float hard_clip(float sample, float threshold) { return fmaxf(-threshold, fminf(threshold, sample)); }
 
-typedef struct
-{
+typedef struct {
 	bool rds_on;
 	bool mpx_on;
-	bool hq_on;
 } FM95_Options;
-typedef struct
-{
+typedef struct {
 	float audio;
 	float headroom;
 	float pilot;
 	float rds;
 	float rds_step;
 } FM95_Volumes;
-typedef struct
-{
+typedef struct {
 	FM95_Options options;
 
 	FM95_Volumes volumes;
@@ -77,10 +73,9 @@ typedef struct
 	float lpf_cutoff;
 } FM95_Config;
 
-typedef struct
-{
+typedef struct {
 	PulseInputDevice input_device, mpx_device, rds_device;
-	PulseOutputDevice output_device, hq_output;
+	PulseOutputDevice output_device;
 	float* rds_in;
 	Oscillator osc;
 	iirfilt_rrrf lpf_l, lpf_r;
@@ -94,7 +89,6 @@ typedef struct
 typedef struct {
     char input[64];
     char output[64];
-    char hq[64];
     char mpx[64];
     char rds[64];
 } FM95_DeviceNames;
@@ -147,7 +141,6 @@ void cleanup_runtime(FM95_Runtime* runtime, const FM95_Config config) {
 
 void cleanup_audio_runtime(FM95_Runtime *rt, const FM95_Options options) {
     free_PulseDevice(&rt->input_device);
-    if (options.hq_on) free_PulseDevice(&rt->hq_output);
     if (options.mpx_on) free_PulseDevice(&rt->mpx_device);
     if (options.rds_on) {
 		free_PulseDevice(&rt->rds_device);
@@ -158,7 +151,6 @@ void cleanup_audio_runtime(FM95_Runtime *rt, const FM95_Options options) {
 
 int run_fm95(const FM95_Config config, FM95_Runtime* runtime) {
 	float output[BUFFER_SIZE];
-	float output_hq[BUFFER_SIZE*2];
 
 	int pulse_error;
 
@@ -253,22 +245,12 @@ int run_fm95(const FM95_Config config, FM95_Runtime* runtime) {
 
 			output[i] = hard_clip(mpx, 1.0)*config.master_volume; // Ensure peak deviation of 75 khz (or the set deviation), assuming we're calibrated correctly
 			advance_oscillator(&runtime->osc);
-
-			output_hq[2*i+0] = hard_clip(l, 1.0f);
-			output_hq[2*i+1] = hard_clip(r, 1.0f);
 		}
 
 		if((pulse_error = write_PulseOutputDevice(&runtime->output_device, output, sizeof(output)))) {
 			fprintf(stderr, "Error writing to output device: %s\n", pa_strerror(pulse_error));
 			to_run = 0;
 			break;
-		}
-		if(config.options.hq_on) {
-			if((pulse_error = write_PulseOutputDevice(&runtime->hq_output, output_hq, sizeof(output_hq)))) {
-				fprintf(stderr, "Error writing to HQ output device: %s\n", pa_strerror(pulse_error));
-				to_run = 0;
-				break;
-			}
 		}
 	}
 
@@ -315,9 +297,6 @@ static int config_handler(void* user, const char* section, const char* name, con
     } else if (MATCH("devices", "output")) {
         strncpy(dv->output, value, 63);
         dv->output[63] = '\0';
-	} else if (MATCH("devices", "hq")) {
-        strncpy(dv->hq, value, 63);
-        dv->hq[63] = '\0';
     } else if (MATCH("devices", "mpx")) {
         strncpy(dv->mpx, value, 63);
         dv->mpx[63] = '\0';
@@ -455,23 +434,6 @@ int setup_audio(FM95_Runtime* runtime, const FM95_DeviceNames dv_names, const FM
     	}
 		return 1;
 	}
-
-	if(config.options.hq_on) {
-		printf("Connecting to HQ device... (%s)\n", dv_names.hq);
-
-		opentime_pulse_error = init_PulseOutputDevice(&runtime->hq_output, config.sample_rate, 2, "fm95", "Audio output", dv_names.hq, &output_buffer_atr, PA_SAMPLE_FLOAT32NE);
-		if (opentime_pulse_error) {
-			fprintf(stderr, "Error: cannot open HQ device: %s\n", pa_strerror(opentime_pulse_error));
-			free_PulseDevice(&runtime->input_device);
-			free_PulseDevice(&runtime->output_device);
-			if(config.options.mpx_on) free_PulseDevice(&runtime->mpx_device);
-			if(config.options.rds_on) {
-    	    	free_PulseDevice(&runtime->rds_device);
-		        free(runtime->rds_in);
-    		}
-			return 1;
-		}
-	}
 	return 0;
 }
 
@@ -572,8 +534,7 @@ int main(int argc, char **argv) {
 		.input = "\0",
 		.output = "\0",
 		.mpx = "\0",
-		.rds = "\0",
-		.hq = "\0"
+		.rds = "\0"
 	};
 	FM95_DeviceNames old_dv_names = dv_names;
 
@@ -605,7 +566,6 @@ int main(int argc, char **argv) {
 
 	config.options.mpx_on = (strlen(dv_names.mpx) != 0);
 	config.options.rds_on = (strlen(dv_names.rds) != 0 && config.rds_streams != 0);
-	config.options.hq_on = (strlen(dv_names.hq) != 0);
 
 	err = setup_audio(&runtime, dv_names, config);
 	if(err != 0) return err;

@@ -10,7 +10,7 @@
 
 inline float deviation_to_dbr(float deviation) {
 	if (deviation < 1e-6f) return -100.0f;
-	return 10*log10f((deviation*deviation)/(SQRT19000 * SQRT19000));
+	return 10*log10f((deviation*deviation)/SQRT19000);
 }
 
 void init_bs412(BS412Compressor* mpx, uint32_t mpx_deviation, float target_power, float attack, float release, uint32_t sample_rate) {
