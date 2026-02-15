@@ -2,13 +2,15 @@
 
 #define BS412_TIME 60
 
+#define SQRT19000 180499999.99999997f // (19000 / sqrt(2)) * 19000 / sqrt(2)
+
 // inline float dbr_to_deviation(float dbr) {
 // 	return 19000.0f * sqrtf(pow(10.0, dbr / 10.0));
 // }
 
 inline float deviation_to_dbr(float deviation) {
 	if (deviation < 1e-6f) return -100.0f;
-	return 10*log10f((deviation*deviation)/((19000.0f / sqrtf(2.0f)) * (19000.0f / sqrtf(2.0f))));
+	return 10*log10f((deviation*deviation)/(SQRT19000 * SQRT19000));
 }
 
 void init_bs412(BS412Compressor* mpx, uint32_t mpx_deviation, float target_power, float attack, float release, uint32_t sample_rate) {
