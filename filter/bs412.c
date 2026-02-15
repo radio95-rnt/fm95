@@ -82,7 +82,7 @@ float bs412_compress(BS412Compressor* comp, float audio, float sample_mpx) {
 		float overshoot_dbr = deviation_to_dbr(avg_deviation * comp->gain) - comp->target;
 		float reduction_factor = powf(10.0f, -overshoot_dbr / 10.0f);
 		comp->gain *= reduction_factor;
-		comp->gain = fmaxf(0.0f, fminf(2.0f, comp->gain));
+		comp->gain = fmaxf(0.01f, fminf(2.82f, comp->gain));
 	}
 
 	comp->sample_counter++;
