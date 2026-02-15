@@ -133,8 +133,9 @@ void show_help(char *name) {
 
 void cleanup_runtime(FM95_Runtime* runtime, const FM95_Config config) {
 	if(config.lpf_cutoff != 0) {
-		iirfilt_rrrf_destroy(runtime->lpf_l);
-		iirfilt_rrrf_destroy(runtime->lpf_r);
+		if(runtime->lpf_l != NULL) iirfilt_rrrf_destroy(runtime->lpf_l);
+		if(runtime->lpf_r != NULL) iirfilt_rrrf_destroy(runtime->lpf_r);
+		runtime->lpf_l = runtime->lpf_r = NULL;
 	}
 	exit_stereo_encoder(&runtime->stencode);
 }
