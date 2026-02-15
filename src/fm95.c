@@ -5,8 +5,8 @@
 
 #define DEFAULT_INI_PATH "/etc/fm95.conf"
 
-#define buffer_maxlength 64512
-#define buffer_tlength_fragsize 64512
+#define buffer_maxlength 73728
+#define buffer_tlength_fragsize 73728
 
 #include "../dsp/oscillator.h"
 #include "../filter/iir.h"
@@ -14,7 +14,7 @@
 #include "../filter/bs412.h"
 #include "../filter/gain_control.h"
 
-#define BUFFER_SIZE 7168 // This defines how many samples to process at a time, because the loop here is this: get signal -> process signal -> output signal, and when we get signal we actually get BUFFER_SIZE of them
+#define BUFFER_SIZE 8192 // This defines how many samples to process at a time, because the loop here is this: get signal -> process signal -> output signal, and when we get signal we actually get BUFFER_SIZE of them
 
 #include "../io/audio.h"
 
