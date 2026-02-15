@@ -493,7 +493,7 @@ void init_runtime(FM95_Runtime* runtime, const FM95_Config config) {
 	}
 
 	#ifdef STEREO_SSB
-	runtime->stereo_hilbert = firhilbf_create(7, 60);
+	runtime->stereo_hilbert = firhilbf_create(STEREO_SSB, 80);
 	#endif
 
 	if(config.preemphasis != 0) {

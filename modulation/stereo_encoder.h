@@ -1,6 +1,6 @@
 #pragma once
 
-#define STEREO_SSB
+#define STEREO_SSB 12
 
 #include <stdint.h>
 #include "../dsp/oscillator.h"
