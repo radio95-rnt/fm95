@@ -5,8 +5,8 @@
 
 #define DEFAULT_INI_PATH "/etc/fm95.conf"
 
-#define buffer_maxlength 24576
-#define buffer_tlength_fragsize 24576
+#define buffer_maxlength 73728
+#define buffer_tlength_fragsize 73728
 
 #include "../dsp/oscillator.h"
 #include "../filter/iir.h"
