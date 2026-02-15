@@ -239,7 +239,7 @@ int run_fm95(const FM95_Config config, FM95_Runtime* runtime) {
 			}
 
 #ifdef STEREO_SSB
-			mpx = stereo_encode(&runtime->stencode, config.stereo, mod_l, mod_r, &runtime.hilbert);
+			mpx = stereo_encode(&runtime->stencode, config.stereo, mod_l, mod_r, &runtime->stereo_hilbert);
 #else
 			mpx = stereo_encode(&runtime->stencode, config.stereo, mod_l, mod_r);
 #endif
