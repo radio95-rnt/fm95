@@ -7,6 +7,7 @@
 #ifdef STEREO_SSB
 #include <liquid/liquid.h>
 #include <complex.h>
+#include <string.h>
 
 typedef struct delay_line_t {
 	float *buffer;
