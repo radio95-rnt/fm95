@@ -70,6 +70,7 @@ typedef struct {
 	float agc_min;
 	float bs412_attack;
 	float bs412_release;
+	float bs412_max;
 	float lpf_cutoff;
 } FM95_Config;
 
@@ -344,6 +345,8 @@ static int config_handler(void* user, const char* section, const char* name, con
 		pconfig->bs412_attack = strtof(value, NULL);
 	} else if(MATCH("fm95", "bs412_release")) {
 		pconfig->bs412_release = strtof(value, NULL);
+	} else if(MATCH("fm95", "bs412_max")) {
+		pconfig->bs412_max = strtof(value, NULL);
 	} else if(MATCH("advanced", "lpf_order")) {
 		pconfig->lpf_order = atoi(value);
 	} else if(MATCH("advanced", "stereo_ssb")) {
@@ -389,7 +392,7 @@ int setup_audio(FM95_Runtime* runtime, const FM95_DeviceNames dv_names, const FM
 	pa_buffer_attr output_buffer_atr = {
 		.maxlength = buffer_maxlength,
 		.tlength = buffer_tlength_fragsize,
-		.prebuf = 64
+		.prebuf = 512
 	};
 
 	int opentime_pulse_error;
@@ -473,7 +476,7 @@ void init_runtime(FM95_Runtime* runtime, const FM95_Config config) {
 		last_sample_counter = runtime->bs412.sample_counter;
 		last_second_counter = runtime->bs412.second_counter;
 	}
-	init_bs412(&runtime->bs412, config.mpx_deviation, config.mpx_power, config.bs412_attack, config.bs412_release, config.sample_rate);
+	init_bs412(&runtime->bs412, config.mpx_deviation, config.mpx_power, config.bs412_attack, config.bs412_release, config.bs412_max, config.sample_rate);
 	runtime->bs412.gain = last_gain;
 	runtime->bs412.avg_power = last_power;
 	runtime->bs412.can_compress = last_compress;
@@ -493,7 +496,7 @@ void init_runtime(FM95_Runtime* runtime, const FM95_Config config) {
 }
 
 int main(int argc, char **argv) {
-	printf("fm95 (an FM Processor by radio95) version 2.3\n");
+	printf("fm95 (an FM Processor by radio95) version 2.4\n");
 
 	FM95_Config config = {
 		.volumes = {
@@ -529,8 +532,9 @@ int main(int argc, char **argv) {
 		.agc_min = 0.1f,
 		.agc_max = 1.5f,
 		.bs412_attack = 0.05f,
-		.bs412_release = 0.025,
-		.lpf_cutoff = 15000,
+		.bs412_release = 0.025f,
+		.bs412_max = 2.82f,
+		.lpf_cutoff = 15000.0f,
 	};
 
 	FM95_DeviceNames dv_names = {

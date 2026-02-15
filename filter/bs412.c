@@ -13,7 +13,7 @@ inline float deviation_to_dbr(float deviation) {
 	return 10*log10f((deviation*deviation)/SQRT19000);
 }
 
-void init_bs412(BS412Compressor* comp, uint32_t mpx_deviation, float target_power, float attack, float release, uint32_t sample_rate) {
+void init_bs412(BS412Compressor* comp, uint32_t mpx_deviation, float target_power, float attack, float release, float max_gain, uint32_t sample_rate) {
 	comp->mpx_deviation = mpx_deviation;
 	comp->avg_power = 0.0f;
     comp->alpha = 1.0f / (BS412_TIME * sample_rate);
@@ -25,6 +25,7 @@ void init_bs412(BS412Compressor* comp, uint32_t mpx_deviation, float target_powe
 	comp->can_compress = 0;
 	comp->second_counter = 0;
 	comp->last_output = 0.0f;
+	comp->max_gain = max_gain;
 	#ifdef BS412_DEBUG
 	debug_printf("Initialized MPX power measurement with sample rate: %d\n", sample_rate);
 	#endif
@@ -82,7 +83,7 @@ float bs412_compress(BS412Compressor* comp, float audio, float sample_mpx) {
 		float overshoot_dbr = deviation_to_dbr(avg_deviation * comp->gain) - comp->target;
 		float reduction_factor = powf(10.0f, -overshoot_dbr / 10.0f);
 		comp->gain *= reduction_factor;
-		comp->gain = fmaxf(0.01f, fminf(2.82f, comp->gain));
+		comp->gain = fmaxf(0.01f, fminf(comp->max_gain, comp->gain));
 	}
 
 	comp->sample_counter++;
