@@ -14,7 +14,8 @@ typedef struct
     Oscillator* osc;
     float audio_volume;
     float pilot_volume;
-    struct delay_line_t delay;
+    delay_line_t delay;
+    delay_line_t delay_pilot;
 } StereoEncoder;
 
 void init_stereo_encoder(StereoEncoder *st, uint8_t multiplier, Oscillator *osc, float audio_volume, float pilot_volume);

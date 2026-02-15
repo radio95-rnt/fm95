@@ -145,7 +145,7 @@ void cleanup_runtime(FM95_Runtime* runtime, const FM95_Config config) {
 	}
 	#ifdef STEREO_SSB
 	firhilbf_destroy(runtime->stereo_hilbert);
-	exit_stereo_encoder(runtime->stencode);
+	exit_stereo_encoder(&runtime->stencode);
 	#endif
 }
 

@@ -7,7 +7,9 @@ void init_stereo_encoder(StereoEncoder* st, uint8_t multiplier, Oscillator* osc,
     st->pilot_volume = pilot_volume;
     st->audio_volume = audio_volume;
     #ifdef STEREO_SSB
+    init_delay_line(&st->delay_pilot, osc->sample_rate);
     init_delay_line(&st->delay, osc->sample_rate);
+    set_delay_line(&st->delay_pilot, STEREO_SSB*2+1);
     set_delay_line(&st->delay, STEREO_SSB*2+1);
     #endif
 }
@@ -30,6 +32,9 @@ float stereo_encode(StereoEncoder* st, uint8_t enabled, float left, float right,
 #endif
     
     float signalx1 = get_oscillator_sin_multiplier_ni(st->osc, st->multiplier);
+    #ifdef STEREO_SSB
+    signalx1 = delay_line(&st->delay_pilot, signalx1);
+    #endif
     float signalx2 = get_oscillator_sin_multiplier_ni(st->osc, st->multiplier * 2.0f);
 
 #ifdef STEREO_SSB
@@ -42,4 +47,5 @@ float stereo_encode(StereoEncoder* st, uint8_t enabled, float left, float right,
 
 void exit_stereo_encoder(StereoEncoder* st) {
     exit_delay_line(&st->delay);
+    exit_delay_line(&st->delay_pilot);
 }
