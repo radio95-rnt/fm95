@@ -38,7 +38,7 @@ float stereo_encode(StereoEncoder* st, uint8_t enabled, float left, float right,
     *audio = (mid*half_audio);
     if(st->stereo_hilbert) {
         float stereo = (crealf(stereo_hilbert) * signalx2cos) + (cimagf(stereo_hilbert) * signalx2);
-        *audio += (stereo * half_audio)
+        *audio += (stereo * half_audio);
     } else *audio += ((side*signalx2) * half_audio);
     return (signalx1*st->pilot_volume);
 }
