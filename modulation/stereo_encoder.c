@@ -9,7 +9,7 @@ void init_stereo_encoder(StereoEncoder* st, uint8_t stereo_ssb, uint8_t multipli
     if(stereo_ssb) {
         init_delay_line(&st->delay_pilot, stereo_ssb*2);
         init_delay_line(&st->delay, stereo_ssb*2);
-        st->stereo_hilbert = firhilbf_create(stereo_ssb, 60);
+        st->stereo_hilbert = firhilbf_create(stereo_ssb, 80);
     } else st->stereo_hilbert = NULL;
 }
 
@@ -37,7 +37,7 @@ float stereo_encode(StereoEncoder* st, uint8_t enabled, float left, float right,
 
     *audio = (mid*half_audio);
     if(st->stereo_hilbert) {
-        float stereo = (crealf(stereo_hilbert) * signalx2cos) + (cimagf(stereo_hilbert) * signalx2);
+        float stereo = (crealf(stereo_hilbert) * signalx2) + (cimagf(stereo_hilbert) * signalx2cos);
         *audio += (stereo * half_audio);
     } else *audio += ((side*signalx2) * half_audio);
     return (signalx1*st->pilot_volume);
