@@ -83,6 +83,9 @@ typedef struct
 	float* rds_in;
 	Oscillator osc;
 	iirfilt_rrrf lpf_l, lpf_r;
+	#ifdef STEREO_SSB
+	firhilbf stereo_hilbert;
+	#endif
 	ResistorCapacitor preemp_l, preemp_r;
 	BS412Compressor bs412;
 	StereoEncoder stencode;
@@ -140,6 +143,10 @@ void cleanup_runtime(FM95_Runtime* runtime, const FM95_Config config) {
 		iirfilt_rrrf_destroy(runtime->lpf_l);
 		iirfilt_rrrf_destroy(runtime->lpf_r);
 	}
+	#ifdef STEREO_SSB
+	firhilbf_destroy(runtime->stereo_hilbert);
+	free(runtime->stencode.delay.buffer);
+	#endif
 }
 
 void cleanup_audio_runtime(FM95_Runtime *rt, const FM95_Options options) {
@@ -480,6 +487,10 @@ void init_runtime(FM95_Runtime* runtime, const FM95_Config config) {
 		runtime->lpf_l = iirfilt_rrrf_create_prototype(LIQUID_IIRDES_CHEBY2, LIQUID_IIRDES_LOWPASS, LIQUID_IIRDES_SOS, config.lpf_order, (config.lpf_cutoff/config.sample_rate), 0.0f, 1.0f, 60.0f);
 		runtime->lpf_r = iirfilt_rrrf_create_prototype(LIQUID_IIRDES_CHEBY2, LIQUID_IIRDES_LOWPASS, LIQUID_IIRDES_SOS, config.lpf_order, (config.lpf_cutoff/config.sample_rate), 0.0f, 1.0f, 60.0f);
 	}
+
+	#ifdef STEREO_SSB
+	runtime->stereo_hilbert = firhilbf_create(7, 60);
+	#endif
 
 	if(config.preemphasis != 0) {
 		init_preemphasis(&runtime->preemp_l, (float)config.preemphasis * 1.0e-6f, config.sample_rate, config.preemp_unity_freq);
