@@ -37,7 +37,7 @@ float bs412_compress(BS412Compressor* comp, float audio, float sample_mpx) {
 
 	comp->avg_power += comp->alpha * ((comp->last_output * comp->last_output * comp->mpx_deviation * comp->mpx_deviation) - comp->avg_power);
 
-	if(comp->sample_counter % 4 == 0) {
+	if(comp->sample_counter % 8 == 0) {
 		comp->avg_deviation = sqrtf(comp->avg_power);
 		comp->modulation_power = deviation_to_dbr(comp->avg_deviation);
 	}
@@ -55,9 +55,8 @@ float bs412_compress(BS412Compressor* comp, float audio, float sample_mpx) {
 		debug_printf("Can compress.\n");
 		#endif
 		comp->can_compress = 1;
-	}
-
-	if(comp->can_compress == 0) {
+		comp->second_counter = 0;
+	} else {
 		comp->sample_counter++;
 		return combined;
 	}
@@ -72,10 +71,8 @@ float bs412_compress(BS412Compressor* comp, float audio, float sample_mpx) {
 	float dev_after_gain = deviation_to_dbr(comp->avg_deviation * comp->gain);
 	if(dev_after_gain > comp->target && comp->modulation_power < comp->target) {
 		// Gain is too much, reduce
-		float overshoot_dbr = dev_after_gain - comp->target;
-		float reduction_factor = expf((-overshoot_dbr) * 0.2302585093f);
-		comp->gain *= reduction_factor;
-		comp->gain = fmaxf(0.01f, fminf(comp->max_gain, comp->gain));
+		float reduction_factor = expf((comp->target - dev_after_gain) * 0.2302585093f);
+		comp->gain = CLAMP(comp->gain * reduction_factor, 0.01f, comp->max_gain);
 	}
 
 	comp->sample_counter++;
