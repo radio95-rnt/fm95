@@ -35,13 +35,13 @@ typedef struct {
 } AudioBuffer;
 
 AudioBuffer* create_audio_buffer(int capacity) {
-    AudioBuffer* buffer = (AudioBuffer*)calloc(sizeof(AudioBuffer));
+    AudioBuffer* buffer = (AudioBuffer*)malloc(sizeof(AudioBuffer));
     if (!buffer) {
         perror("Failed to allocate audio buffer");
         return NULL;
     }
 
-    buffer->packets = (AudioPacket*)calloc(capacity * sizeof(AudioPacket));
+    buffer->packets = (AudioPacket*)malloc(capacity * sizeof(AudioPacket));
     if (!buffer->packets) {
         perror("Failed to allocate packet buffer");
         free(buffer);

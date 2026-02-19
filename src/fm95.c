@@ -424,7 +424,7 @@ int setup_audio(FM95_Runtime* runtime, const FM95_DeviceNames dv_names, const FM
 			if(config.options.mpx_on) free_PulseDevice(&runtime->mpx_device);
 			return 1;
 		}
-		runtime->rds_in = calloc(sizeof(float) * BUFFER_SIZE * config.rds_streams);
+		runtime->rds_in = malloc(sizeof(float) * BUFFER_SIZE * config.rds_streams);
 	}
 
 	printf("Connecting to output device... (%s)\n", dv_names.output);
