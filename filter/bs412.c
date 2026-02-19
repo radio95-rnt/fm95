@@ -37,23 +37,14 @@ float bs412_compress(BS412Compressor* comp, float audio, float sample_mpx) {
 
 	comp->avg_power += comp->alpha * ((comp->last_output * comp->last_output * comp->mpx_deviation * comp->mpx_deviation) - comp->avg_power);
 
-	float avg_deviation = sqrtf(comp->avg_power);
-	float modulation_power = deviation_to_dbr(avg_deviation);
-
-	if(comp->target <= -100.0f) {
-		#ifdef BS412_DEBUG
-		if(comp->sample_counter > comp->sample_rate) {
-			debug_printf("MPX power: %.2f dBr (%.1f Hz)\n", modulation_power, avg_deviation);
-			comp->sample_counter = 0;
-		}
-		#endif
-		comp->sample_counter++;
-		return combined;
+	if(comp->sample_counter % 4 == 0) {
+		comp->avg_deviation = sqrtf(comp->avg_power);
+		comp->modulation_power = deviation_to_dbr(comp->avg_deviation);
 	}
 
 	if(comp->sample_counter > comp->sample_rate) {
 		#ifdef BS412_DEBUG
-		debug_printf("MPX power: %.2f dBr with gain %.2fx (%.2f dBr)\n", modulation_power, mpx->gain, deviation_to_dbr(avg_deviation * mpx->gain));
+		debug_printf("MPX power: %.2f dBr with gain %.2fx (%.2f dBr)\n", comp->modulation_power, mpx->gain, deviation_to_dbr(comp->avg_deviation * mpx->gain));
 		#endif
 		comp->sample_counter = 0;
 		if(comp->can_compress == 0) comp->second_counter++;
@@ -63,7 +54,6 @@ float bs412_compress(BS412Compressor* comp, float audio, float sample_mpx) {
 		#ifdef BS412_DEBUG
 		debug_printf("Can compress.\n");
 		#endif
-		comp->gain = powf(10.0f, (comp->target - modulation_power) / 10.0f);
 		comp->can_compress = 1;
 	}
 
@@ -72,17 +62,18 @@ float bs412_compress(BS412Compressor* comp, float audio, float sample_mpx) {
 		return combined;
 	}
 
-	float target_gain = expf((comp->target - modulation_power) * 0.2302585093f); // 1/10 * ln(10)
-	if (modulation_power > comp->target) comp->gain = comp->attack * comp->gain + (1.0f - comp->attack) * target_gain;
+	float target_gain = expf((comp->target - comp->modulation_power) * 0.2302585093f); // 1/10 * ln(10)
+	if (comp->modulation_power > comp->target) comp->gain = comp->attack * comp->gain + (1.0f - comp->attack) * target_gain;
 	else comp->gain = comp->release * comp->gain + (1.0f - comp->release) * target_gain;
 	
 	comp->gain = CLAMP(comp->gain, 0.0f, comp->max_gain);
 
 	float output_sample = (audio * comp->gain) + sample_mpx;
-	if(deviation_to_dbr(avg_deviation * comp->gain) > comp->target && modulation_power < comp->target) {
+	float dev_after_gain = deviation_to_dbr(comp->avg_deviation * comp->gain);
+	if(dev_after_gain > comp->target && comp->modulation_power < comp->target) {
 		// Gain is too much, reduce
-		float overshoot_dbr = deviation_to_dbr(avg_deviation * comp->gain) - comp->target;
-		float reduction_factor = powf(10.0f, -overshoot_dbr / 10.0f);
+		float overshoot_dbr = dev_after_gain - comp->target;
+		float reduction_factor = expf((-overshoot_dbr) * 0.2302585093f);
 		comp->gain *= reduction_factor;
 		comp->gain = fmaxf(0.01f, fminf(comp->max_gain, comp->gain));
 	}
