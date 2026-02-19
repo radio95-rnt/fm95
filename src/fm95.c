@@ -424,7 +424,7 @@ int setup_audio(FM95_Runtime* runtime, const FM95_DeviceNames dv_names, const FM
 			if(config.options.mpx_on) free_PulseDevice(&runtime->mpx_device);
 			return 1;
 		}
-		runtime->rds_in = malloc(sizeof(float) * BUFFER_SIZE * config.rds_streams);
+		runtime->rds_in = calloc(sizeof(float) * BUFFER_SIZE * config.rds_streams);
 	}
 
 	printf("Connecting to output device... (%s)\n", dv_names.output);
@@ -491,8 +491,6 @@ void init_runtime(FM95_Runtime* runtime, const FM95_Config config) {
 		initAGC(&runtime->agc, config.sample_rate, config.agc_target, config.agc_min, config.agc_max, config.agc_attack, config.agc_release);
 		runtime->agc.currentGain = last_gain;
 	}
-
-	if(config.options.rds_on) memset(runtime->rds_in, 0, sizeof(float) * BUFFER_SIZE * config.rds_streams);
 }
 
 int main(int argc, char **argv) {

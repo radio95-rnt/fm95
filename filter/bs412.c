@@ -1,6 +1,7 @@
 #include "bs412.h"
 
 #define BS412_TIME 60
+#define CLAMP(x, lo, hi) (((x) < (lo)) ? (lo) : ((x) > (hi) ? (hi) : (x)))
 
 #define SQRT19000 180499999.99999997f // (19000 / sqrt(2)) * 19000 / sqrt(2)
 
@@ -71,14 +72,14 @@ float bs412_compress(BS412Compressor* comp, float audio, float sample_mpx) {
 		return combined;
 	}
 
-	float target_gain = powf(10.0f, (comp->target - modulation_power) / 10.0f);
+	float target_gain = expf((comp->target - modulation_power) * 0.2302585093f); // 1/10 * ln(10)
 	if (modulation_power > comp->target) comp->gain = comp->attack * comp->gain + (1.0f - comp->attack) * target_gain;
 	else comp->gain = comp->release * comp->gain + (1.0f - comp->release) * target_gain;
 	
-	comp->gain = fmaxf(0.0f, fminf(2.0f, comp->gain));
+	comp->gain = CLAMP(comp->gain, 0.0f, comp->max_gain);
 
 	float output_sample = (audio * comp->gain) + sample_mpx;
-	if(deviation_to_dbr(avg_deviation * comp->gain) > comp->target && deviation_to_dbr(avg_deviation) < comp->target) {
+	if(deviation_to_dbr(avg_deviation * comp->gain) > comp->target && modulation_power < comp->target) {
 		// Gain is too much, reduce
 		float overshoot_dbr = deviation_to_dbr(avg_deviation * comp->gain) - comp->target;
 		float reduction_factor = powf(10.0f, -overshoot_dbr / 10.0f);
