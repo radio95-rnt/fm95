@@ -23,8 +23,8 @@ void init_bs412(BS412Compressor* comp, uint32_t mpx_deviation, float target_powe
 	comp->release = expf(-1.0f / (release * sample_rate));
 	comp->target = target_power; // target is expected to not be our rms format
 	comp->gain = 1.0f;
-	comp->can_compress = 1;
-	comp->second_counter = BS412_TIME+1;
+	comp->can_compress = 0;
+	comp->second_counter = 0;
 	comp->max_gain = max_gain;
 	#ifdef BS412_DEBUG
 	debug_printf("Initialized MPX power measurement with sample rate: %d\n", sample_rate);
@@ -55,9 +55,6 @@ float bs412_compress(BS412Compressor* comp, float audio, float sample_mpx) {
 		comp->second_counter = 0;
 	} else {
 		comp->sample_counter++;
-		#ifdef BS412_DEBUG
-		debug_printf("Bypass");
-		#endif
 		return combined;
 	}
 
@@ -75,13 +72,6 @@ float bs412_compress(BS412Compressor* comp, float audio, float sample_mpx) {
 	}
 
 	comp->sample_counter++;
-
-	#ifdef BS412_DEBUG
-	debug_printf("MPX: %.2f dBr | gain: %.6f | target_gain: %.6f\n",
-			comp->modulation_power,
-			comp->gain,
-			target_gain);
-	#endif
 
 	return output_sample;
 }
