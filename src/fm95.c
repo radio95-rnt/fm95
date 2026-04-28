@@ -25,8 +25,10 @@
 static volatile sig_atomic_t to_run = 1;
 static volatile sig_atomic_t to_reload = 0;
 
-static inline float soft_clip(float x) {
-    return tanhf(x);
+static inline float soft_clip(float x) { return tanhf(x); }
+
+static inline float soft_clip_drive(float x, float drive) {
+    return tanhf(x * drive) / tanhf(drive);
 }
 
 typedef struct {
@@ -39,6 +41,8 @@ typedef struct {
 	float pilot;
 	float rds;
 	float rds_step;
+	float drive;
+	float makeup;
 } FM95_Volumes;
 typedef struct {
 	FM95_Options options;
@@ -225,8 +229,8 @@ int run_fm95(const FM95_Config config, FM95_Runtime* runtime) {
 				mod_r = apply_preemphasis(&runtime->preemp_r, mod_r);
 			}
 
-			mod_l = soft_clip(mod_l);
-			mod_r = soft_clip(mod_r);
+			mod_l = soft_clip_drive(mod_l, config.volumes.drive) * config.volumes.makeup;
+			mod_r = soft_clip_drive(mod_r, config.volumes.drive) * config.volumes.makeup;
 
 			mpx = stereo_encode(&runtime->stencode, config.stereo, mod_l, mod_r, &audio);
 
@@ -358,17 +362,13 @@ static int config_handler(void* user, const char* section, const char* name, con
 			pconfig->lpf_cutoff = (pconfig->sample_rate * 0.5);
 			fprintf(stderr, "LPF cutoff over niquist, limiting.\n");
 		}
-	} else if(MATCH("advanced", "headroom")) {
-		pconfig->volumes.headroom = strtof(value, NULL);
-	} else if(MATCH("volumes", "pilot")) {
-		pconfig->volumes.pilot = strtof(value, NULL);
-	} else if(MATCH("volumes", "rds")) {
-		pconfig->volumes.rds = strtof(value, NULL);
-	} else if(MATCH("volumes", "rds_step")) {
-		pconfig->volumes.rds_step = strtof(value, NULL);
-	} else {
-        return 0; // Unknown section/name
-    }
+	} else if(MATCH("advanced", "headroom")) pconfig->volumes.headroom = strtof(value, NULL);
+	else if(MATCH("advanced", "drive")) pconfig->volumes.drive = strtof(value, NULL);
+	else if(MATCH("advanced", "makeup")) pconfig->volumes.makeup = strtof(value, NULL);
+	else if(MATCH("volumes", "pilot")) pconfig->volumes.pilot = strtof(value, NULL);
+	else if(MATCH("volumes", "rds")) pconfig->volumes.rds = strtof(value, NULL);
+	else if(MATCH("volumes", "rds_step")) pconfig->volumes.rds_step = strtof(value, NULL);
+	else return 0; // Unknown section/name
 
     return 1;
 }
@@ -498,7 +498,9 @@ int main(int argc, char **argv) {
 			.pilot = DEFAULT_PILOT_VOLUME,
 			.rds = DEFAULT_RDS_VOLUME,
 			.rds_step = DEFAULT_RDS_VOLUME_STEP,
-			.headroom = 0.05f
+			.headroom = 0.05f,
+			.drive = 1.0f,
+			.makeup = 1.0f
 		},
 		.stereo = 1,
 		.stereo_ssb = 0,
