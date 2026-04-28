@@ -1,5 +1,6 @@
 #pragma once
 
+#define BS412_DEBUG
 #ifdef DEBUG
 #define BS412_DEBUG
 #endif
