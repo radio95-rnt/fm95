@@ -55,6 +55,9 @@ float bs412_compress(BS412Compressor* comp, float audio, float sample_mpx) {
 		comp->second_counter = 0;
 	} else {
 		comp->sample_counter++;
+		#ifdef BS412_DEBUG
+		debug_printf("Bypass");
+		#endif
 		return combined;
 	}
 
