@@ -26,8 +26,6 @@ typedef struct
 	uint8_t can_compress : 1;
 	uint8_t second_counter;
 	float last_output;
-	float avg_deviation;
-	float modulation_power;
 } BS412Compressor;
 
 // float dbr_to_deviation(float dbr);
