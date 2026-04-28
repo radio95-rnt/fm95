@@ -19,8 +19,6 @@ float stereo_encode(StereoEncoder* st, uint8_t enabled, float left, float right,
 
     if(st->stereo_hilbert) mid = delay_line(&st->delay, mid);
 
-    float half_audio = st->audio_volume * 0.5f;
-
     float side = (left-right) * 0.5f;
 
     float complex stereo_hilbert = 0+0*I;
@@ -35,11 +33,11 @@ float stereo_encode(StereoEncoder* st, uint8_t enabled, float left, float right,
     }
     float signalx2 = get_oscillator_sin_multiplier_ni(st->osc, st->multiplier * 2.0f);
 
-    *audio = (mid*half_audio);
+    *audio = (mid*st->audio_volume);
     if(st->stereo_hilbert) {
         float stereo = (crealf(stereo_hilbert) * signalx2) - (cimagf(stereo_hilbert) * signalx2cos);
-        *audio += (stereo * half_audio);
-    } else *audio += ((side*signalx2) * half_audio);
+        *audio += (stereo * st->audio_volume);
+    } else *audio += ((side*signalx2) * st->audio_volume);
     return (signalx1*st->pilot_volume);
 }
 
