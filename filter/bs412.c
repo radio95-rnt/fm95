@@ -1,5 +1,6 @@
 #include "bs412.h"
 
+#define BS412_DEBUG
 #define BS412_TIME 60
 #define CLAMP(x, lo, hi) (((x) < (lo)) ? (lo) : ((x) > (hi) ? (hi) : (x)))
 
