@@ -25,7 +25,6 @@
 static volatile sig_atomic_t to_run = 1;
 static volatile sig_atomic_t to_reload = 0;
 
-inline float hard_clip(float sample, float threshold) { return fmaxf(-threshold, fminf(threshold, sample)); }
 static inline float soft_clip(float x) {
     return tanhf(x);
 }
@@ -247,7 +246,7 @@ int run_fm95(const FM95_Config config, FM95_Runtime* runtime) {
 
 			mpx = bs412_compress(&runtime->bs412, audio, mpx+mpx_in[i]);
 
-			output[i] = hard_clip(soft_clip(mpx), 1.0)*config.master_volume; // Ensure peak deviation of 75 khz (or the set deviation), assuming we're calibrated correctly
+			output[i] = soft_clip(mpx)*config.master_volume; // Ensure peak deviation of 75 khz (or the set deviation), assuming we're calibrated correctly
 			advance_oscillator(&runtime->osc);
 		}
 
