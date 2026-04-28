@@ -43,12 +43,6 @@ float bs412_compress(BS412Compressor* comp, float audio, float sample_mpx) {
 	}
 
 	if(comp->sample_counter > comp->sample_rate) {
-		#ifdef BS412_DEBUG
-		debug_printf("MPX: %.2f dBr | gain: %.6f | target_gain: %.6f\n",
-             comp->modulation_power,
-             comp->gain,
-             target_gain);
-		#endif
 		comp->sample_counter = 0;
 		if(comp->can_compress == 0) comp->second_counter++;
 	}
@@ -78,6 +72,13 @@ float bs412_compress(BS412Compressor* comp, float audio, float sample_mpx) {
 	}
 
 	comp->sample_counter++;
+
+	#ifdef BS412_DEBUG
+	debug_printf("MPX: %.2f dBr | gain: %.6f | target_gain: %.6f\n",
+			comp->modulation_power,
+			comp->gain,
+			target_gain);
+	#endif
 
 	return output_sample;
 }
