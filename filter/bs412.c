@@ -23,7 +23,7 @@ void init_bs412(BS412Compressor* comp, uint32_t mpx_deviation, float target_powe
 	comp->release = expf(-1.0f / (release * sample_rate));
 	comp->target = target_power; // target is expected to not be our rms format
 	comp->gain = 1.0f;
-	comp->can_compress = 0;
+	comp->can_compress = 1;
 	comp->second_counter = 0;
 	comp->max_gain = max_gain;
 	#ifdef BS412_DEBUG
