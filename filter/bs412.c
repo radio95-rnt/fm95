@@ -47,7 +47,7 @@ float bs412_compress(BS412Compressor* comp, float audio, float sample_mpx) {
 		if(comp->can_compress == 0) comp->second_counter++;
 	}
 
-	if(comp->can_compress == 0 && comp->second_counter > BS412_TIME) {
+	if(comp->can_compress == 0 || comp->second_counter > BS412_TIME) {
 		#ifdef BS412_DEBUG
 		debug_printf("Can compress.\n");
 		#endif
