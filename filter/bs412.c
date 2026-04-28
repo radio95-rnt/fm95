@@ -33,8 +33,9 @@ void init_bs412(BS412Compressor* comp, uint32_t mpx_deviation, float target_powe
 
 float bs412_compress(BS412Compressor* comp, float audio, float sample_mpx) {
 	float combined = audio + sample_mpx;
+	float output_sample = (audio * comp->gain) + sample_mpx;
 
-	comp->avg_power += comp->alpha * ((combined * combined * comp->mpx_deviation * comp->mpx_deviation) - comp->avg_power);
+	comp->avg_power += comp->alpha * ((output_sample * output_sample * comp->mpx_deviation * comp->mpx_deviation) - comp->avg_power);
 
 	if(comp->sample_counter % 8 == 0) {
 		comp->avg_deviation = sqrtf(comp->avg_power);
@@ -66,7 +67,6 @@ float bs412_compress(BS412Compressor* comp, float audio, float sample_mpx) {
 	
 	comp->gain = CLAMP(comp->gain, 0.0f, comp->max_gain);
 
-	float output_sample = (audio * comp->gain) + sample_mpx;
 	float dev_after_gain = deviation_to_dbr(comp->avg_deviation * comp->gain);
 	if(dev_after_gain > comp->target && comp->modulation_power < comp->target) {
 		// Gain is too much, reduce
