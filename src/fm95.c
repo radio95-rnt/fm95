@@ -26,6 +26,9 @@ static volatile sig_atomic_t to_run = 1;
 static volatile sig_atomic_t to_reload = 0;
 
 inline float hard_clip(float sample, float threshold) { return fmaxf(-threshold, fminf(threshold, sample)); }
+static inline float soft_clip(float x) {
+    return tanhf(x);
+}
 
 typedef struct {
 	bool rds_on;
@@ -47,7 +50,6 @@ typedef struct {
 
 	uint8_t rds_streams;
 
-	float clipper_threshold;
 	uint8_t preemphasis;
 	uint8_t calibration;
 	float mpx_power;
@@ -212,22 +214,20 @@ int run_fm95(const FM95_Config config, FM95_Runtime* runtime) {
 				r *= agc_gain;
 			}
 
-			if (config.clipper_threshold != 0) {
-				l = hard_clip(l * config.audio_volume, config.clipper_threshold);
-				r = hard_clip(r * config.audio_volume, config.clipper_threshold);
-			}
-
 			float mod_l, mod_r;
 
 			if(config.lpf_cutoff != 0) {
 				iirfilt_rrrf_execute(runtime->lpf_l, l, &mod_l);
 				iirfilt_rrrf_execute(runtime->lpf_r, r, &mod_r);
 			}
-
+	
 			if(config.preemphasis != 0) {
 				mod_l = apply_preemphasis(&runtime->preemp_l, mod_l);
 				mod_r = apply_preemphasis(&runtime->preemp_r, mod_r);
 			}
+
+			mod_l = soft_clip(mod_l);
+			mod_r = soft_clip(mod_r);
 
 			mpx = stereo_encode(&runtime->stencode, config.stereo, mod_l, mod_r, &audio);
 
@@ -247,7 +247,7 @@ int run_fm95(const FM95_Config config, FM95_Runtime* runtime) {
 
 			mpx = bs412_compress(&runtime->bs412, audio, mpx+mpx_in[i]);
 
-			output[i] = hard_clip(mpx, 1.0)*config.master_volume; // Ensure peak deviation of 75 khz (or the set deviation), assuming we're calibrated correctly
+			output[i] = hard_clip(soft_clip(mpx), 1.0)*config.master_volume; // Ensure peak deviation of 75 khz (or the set deviation), assuming we're calibrated correctly
 			advance_oscillator(&runtime->osc);
 		}
 
@@ -313,8 +313,6 @@ static int config_handler(void* user, const char* section, const char* name, con
             printf("RDS Streams more than 4? Nuh uh\n");
             return 0;
         }
-    } else if (MATCH("fm95", "clipper_threshold")) {
-        pconfig->clipper_threshold = strtof(value, NULL);
     } else if (MATCH("fm95", "preemphasis")) {
         pconfig->preemphasis = atoi(value);
     } else if (MATCH("fm95", "calibration")) {
@@ -508,7 +506,6 @@ int main(int argc, char **argv) {
 
 		.rds_streams = 1, // You have to match this with RDS95, otherwise may god have mercy on your RDS decoders
 
-		.clipper_threshold = 1.0f, // At what level for the clipper to work, 1.0f, clips the audio at 1 volt peak to peak, so it will be always between -1 and 1
 		.preemphasis = 50, // Europe, the "freedomers" use 75µs
 		.calibration = 0, // Off
 		.mpx_power = 3.0f, // dbr, this is for BS412, simplest bs412
