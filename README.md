@@ -5,8 +5,7 @@ FM95 is a audio processor for FM, it does:
 - Pre-Emphasis
 - Low Pass Filtering
 - AGC
-- Stereo (Polar too)
-- SCA
+- Stereo
 - BS412 (mpx power limiter, simplest implementation ever)
 
 Supports these inputs:
@@ -36,11 +35,11 @@ Done!
 
 ## CPU Usage?
 
-Should run completly fine on a pi 5, fine on a pi 3b (30% cpu, 45% with lpf)
+Should run completly fine on a pi 5, fine on a pi 3b (~30% cpu)
 
 ## Other Apps
 
-FM95 also includes some other apps, such as chimer95 which generates GTS tones each half hour, and dcf95 which creates a DCF77 compatible signal, and vban95 now which is a buffered VBAN receiver. And now also SCA generation was moved to sca95 from fm95!
+FM95 also includes some other apps, such as chimer95 which generates GTS tones each half hour, and vban95 now which is a buffered VBAN receiver. And now also SCA generation was moved to sca95 from fm95!
 
 ## Usage of other projects
 

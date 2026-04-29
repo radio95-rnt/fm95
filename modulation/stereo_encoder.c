@@ -5,7 +5,7 @@ void init_stereo_encoder(StereoEncoder* st, uint8_t stereo_ssb, uint8_t multipli
     st->multiplier = multiplier;
     st->osc = osc;
     st->pilot_volume = pilot_volume;
-    st->audio_volume = audio_volume;
+    st->audio_volume = audio_volume * 0.5f;
     if(stereo_ssb) {
         init_delay_line(&st->delay_pilot, stereo_ssb*2);
         init_delay_line(&st->delay, stereo_ssb*2);
@@ -15,7 +15,10 @@ void init_stereo_encoder(StereoEncoder* st, uint8_t stereo_ssb, uint8_t multipli
 
 float stereo_encode(StereoEncoder* st, uint8_t enabled, float left, float right, float *audio) {
     float mid = (left+right) * 0.5f;
-    if(!enabled) return mid * st->audio_volume;
+    if(!enabled) {
+        *audio = mid * 2.0f * st->audio_volume;
+        return 0.0f;
+    }
 
     if(st->stereo_hilbert) mid = delay_line(&st->delay, mid);
 
@@ -33,12 +36,12 @@ float stereo_encode(StereoEncoder* st, uint8_t enabled, float left, float right,
     }
     float signalx2 = get_oscillator_sin_multiplier_ni(st->osc, st->multiplier * 2.0f);
 
-    *audio = (mid*st->audio_volume);
+    *audio = mid * st->audio_volume;
     if(st->stereo_hilbert) {
         float stereo = (crealf(stereo_hilbert) * signalx2) - (cimagf(stereo_hilbert) * signalx2cos);
-        *audio += (stereo * st->audio_volume);
-    } else *audio += ((side*signalx2) * st->audio_volume);
-    return (signalx1*st->pilot_volume);
+        *audio += stereo * st->audio_volume;
+    } else *audio += (side*signalx2) * st->audio_volume;
+    return signalx1 * st->pilot_volume;
 }
 
 void exit_stereo_encoder(StereoEncoder* st) {

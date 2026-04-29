@@ -18,18 +18,8 @@
 
 #include "../io/audio.h"
 
-#define DEFAULT_PILOT_VOLUME 0.09f // 9%
-#define DEFAULT_RDS_VOLUME 0.0475f // 4.75%
-#define DEFAULT_RDS_VOLUME_STEP 0.9f // 90%, so RDS2 stream 4 is 90% of stream 3 which is 90% of stream 2, which again is 90% of stream 1...
-
 static volatile sig_atomic_t to_run = 1;
 static volatile sig_atomic_t to_reload = 0;
-
-static inline float soft_clip(float x) { return tanhf(x); }
-
-static inline float soft_clip_drive(float x, float drive) {
-    return tanhf(x * drive) / tanhf(drive);
-}
 
 typedef struct {
 	bool rds_on;
@@ -59,7 +49,6 @@ typedef struct {
 	float mpx_deviation;
 	float audio_deviation;
 	float master_volume;
-	float audio_volume;
 	float audio_preamp;
 
 	uint32_t sample_rate;
@@ -104,10 +93,7 @@ typedef struct {
 } FM95_SetupContext;
 
 bool compare_dvs(const FM95_DeviceNames *a, const FM95_DeviceNames *b) {
-    return strcmp(a->input,  b->input)  == 0 &&
-           strcmp(a->output, b->output) == 0 &&
-           strcmp(a->mpx,    b->mpx)    == 0 &&
-           strcmp(a->rds,    b->rds)    == 0;
+    return strcmp(a->input, b->input) == 0 && strcmp(a->output, b->output) == 0 && strcmp(a->mpx, b->mpx) == 0 && strcmp(a->rds, b->rds) == 0;
 }
 
 float calculate_sharedaudio_volume(const FM95_Volumes volumes, const int rds_streams) {
@@ -169,7 +155,7 @@ int run_fm95(const FM95_Config config, FM95_Runtime* runtime) {
 				else if(config.calibration == 3) sample *= (19000/config.mpx_deviation);
 				output[i] = sample*config.master_volume;
 			}
-			if((pulse_error = write_PulseOutputDevice(&runtime->output_device, output, sizeof(output)))) { // get output from the function and assign it into pulse_error, this comment to avoid confusion
+			if((pulse_error = write_PulseOutputDevice(&runtime->output_device, output, sizeof(output)))) {
 				fprintf(stderr, "Error writing to output device: %s\n", pa_strerror(pulse_error));
 				to_run = 0;
 				break;
@@ -184,6 +170,8 @@ int run_fm95(const FM95_Config config, FM95_Runtime* runtime) {
 
 	bool mpx_on = config.options.mpx_on;
 	bool rds_on = config.options.rds_on;
+
+	float softclip_norm = config.volumes.makeup / tanhf(config.volumes.drive);
 
 	while (to_run) {
 		if((pulse_error = read_PulseInputDevice(&runtime->input_device, audio_stereo_input, sizeof(audio_stereo_input)))) { // get output from the function and assign it into pulse_error, this comment to avoid confusion
@@ -229,8 +217,8 @@ int run_fm95(const FM95_Config config, FM95_Runtime* runtime) {
 				mod_r = apply_preemphasis(&runtime->preemp_r, mod_r);
 			}
 
-			mod_l = soft_clip_drive(mod_l, config.volumes.drive) * config.volumes.makeup;
-			mod_r = soft_clip_drive(mod_r, config.volumes.drive) * config.volumes.makeup;
+			mod_l = tanhf(mod_l * config.volumes.drive) * softclip_norm;
+			mod_r = tanhf(mod_r * config.volumes.drive) * softclip_norm;
 
 			mpx = stereo_encode(&runtime->stencode, config.stereo, mod_l, mod_r, &audio);
 
@@ -250,7 +238,7 @@ int run_fm95(const FM95_Config config, FM95_Runtime* runtime) {
 
 			mpx = bs412_compress(&runtime->bs412, audio, mpx+mpx_in[i]);
 
-			output[i] = soft_clip(mpx)*config.master_volume; // Ensure peak deviation of 75 khz (or the set deviation), assuming we're calibrated correctly
+			output[i] = tanhf(mpx)*config.master_volume; // Ensure peak deviation of 75 khz (or the set deviation), assuming we're calibrated correctly
 			advance_oscillator(&runtime->osc);
 		}
 
@@ -296,9 +284,8 @@ static int config_handler(void* user, const char* section, const char* name, con
 
     #define MATCH(s, n) strcmp(section, s) == 0 && strcmp(name, n) == 0
 
-    if (MATCH("fm95", "stereo")) {
-        pconfig->stereo = atoi(value);
-	} else if (MATCH("devices", "input")) {
+    if (MATCH("fm95", "stereo")) pconfig->stereo = atoi(value);
+	else if (MATCH("devices", "input")) {
         strncpy(dv->input, value, 63);
         dv->input[63] = '\0';
     } else if (MATCH("devices", "output")) {
@@ -316,47 +303,26 @@ static int config_handler(void* user, const char* section, const char* name, con
             printf("RDS Streams more than 4? Nuh uh\n");
             return 0;
         }
-    } else if (MATCH("fm95", "preemphasis")) {
-        pconfig->preemphasis = atoi(value);
-    } else if (MATCH("fm95", "calibration")) {
-        pconfig->calibration = atoi(value);
-    } else if (MATCH("fm95", "mpx_power")) {
-        pconfig->mpx_power = strtof(value, NULL);
-    } else if (MATCH("fm95", "mpx_deviation")) {
-        pconfig->mpx_deviation = strtof(value, NULL);
-    } else if (MATCH("fm95", "master_volume")) {
-        pconfig->master_volume = strtof(value, NULL);
-    } else if (MATCH("fm95", "audio_volume")) {
-        pconfig->audio_volume = strtof(value, NULL);
-    } else if (MATCH("fm95", "audio_preamp")) {
-        pconfig->audio_preamp = strtof(value, NULL);
-    } else if (MATCH("fm95", "deviation")) {
-        pconfig->audio_deviation = strtof(value, NULL);
-	} else if(MATCH("fm95", "agc_target")) {
-		pconfig->agc_target = strtof(value, NULL);
-	} else if(MATCH("fm95", "agc_attack")) {
-		pconfig->agc_attack = strtof(value, NULL);
-	} else if(MATCH("fm95", "agc_release")) {
-		pconfig->agc_release = strtof(value, NULL);
-	} else if(MATCH("fm95", "agc_min")) {
-		pconfig->agc_min = strtof(value, NULL);
-	} else if(MATCH("fm95", "agc_max")) {
-		pconfig->agc_max = strtof(value, NULL);
-	} else if(MATCH("fm95", "bs412_attack")) {
-		pconfig->bs412_attack = strtof(value, NULL);
-	} else if(MATCH("fm95", "bs412_release")) {
-		pconfig->bs412_release = strtof(value, NULL);
-	} else if(MATCH("fm95", "bs412_max")) {
-		pconfig->bs412_max = strtof(value, NULL);
-	} else if(MATCH("advanced", "lpf_order")) {
-		pconfig->lpf_order = atoi(value);
-	} else if(MATCH("advanced", "stereo_ssb")) {
-		pconfig->stereo_ssb = atoi(value);
-	} else if(MATCH("advanced", "preemp_unity")) {
-		pconfig->preemp_unity_freq = strtof(value, NULL);
-	} else if(MATCH("advanced", "sample_rate")) {
-		pconfig->sample_rate = atoi(value);
-	} else if(MATCH("advanced", "lpf_cutoff")) {
+	} else if (MATCH("fm95", "preemphasis")) pconfig->preemphasis = atoi(value);
+    else if (MATCH("fm95", "calibration")) pconfig->calibration = atoi(value);
+    else if (MATCH("fm95", "mpx_power")) pconfig->mpx_power = strtof(value, NULL);
+    else if (MATCH("fm95", "mpx_deviation")) pconfig->mpx_deviation = strtof(value, NULL);
+    else if (MATCH("fm95", "master_volume")) pconfig->master_volume = strtof(value, NULL);
+    else if (MATCH("fm95", "audio_preamp")) pconfig->audio_preamp = strtof(value, NULL);
+    else if (MATCH("fm95", "deviation")) pconfig->audio_deviation = strtof(value, NULL);
+	else if(MATCH("fm95", "agc_target")) pconfig->agc_target = strtof(value, NULL);
+	else if(MATCH("fm95", "agc_attack")) pconfig->agc_attack = strtof(value, NULL);
+	else if(MATCH("fm95", "agc_release")) pconfig->agc_release = strtof(value, NULL);
+	else if(MATCH("fm95", "agc_min")) pconfig->agc_min = strtof(value, NULL);
+	else if(MATCH("fm95", "agc_max")) pconfig->agc_max = strtof(value, NULL);
+	else if(MATCH("fm95", "bs412_attack")) pconfig->bs412_attack = strtof(value, NULL);
+	else if(MATCH("fm95", "bs412_release")) pconfig->bs412_release = strtof(value, NULL);
+	else if(MATCH("fm95", "bs412_max")) pconfig->bs412_max = strtof(value, NULL);
+	else if(MATCH("advanced", "lpf_order")) pconfig->lpf_order = atoi(value);
+	else if(MATCH("advanced", "stereo_ssb")) pconfig->stereo_ssb = atoi(value);
+	else if(MATCH("advanced", "preemp_unity")) pconfig->preemp_unity_freq = strtof(value, NULL);
+	else if(MATCH("advanced", "sample_rate")) pconfig->sample_rate = atoi(value);
+	else if(MATCH("advanced", "lpf_cutoff")) {
 		pconfig->lpf_cutoff = strtof(value, NULL);
 		if(pconfig->lpf_cutoff > (pconfig->sample_rate * 0.5)) {
 			pconfig->lpf_cutoff = (pconfig->sample_rate * 0.5);
@@ -491,13 +457,13 @@ void init_runtime(FM95_Runtime* runtime, const FM95_Config config) {
 }
 
 int main(int argc, char **argv) {
-	printf("fm95 (an FM Processor by radio95) version 2.4\n");
+	printf("fm95 (an FM Processor by radio95) version 2.5\n");
 
 	FM95_Config config = {
 		.volumes = {
-			.pilot = DEFAULT_PILOT_VOLUME,
-			.rds = DEFAULT_RDS_VOLUME,
-			.rds_step = DEFAULT_RDS_VOLUME_STEP,
+			.pilot = 0.09f,
+			.rds = 0.045f,
+			.rds_step = 0.9f,
 			.headroom = 0.05f,
 			.drive = 1.0f,
 			.makeup = 1.0f
@@ -513,7 +479,6 @@ int main(int argc, char **argv) {
 		.mpx_deviation = 75000.0f, // for BS412, this is what deviation does the compressor see as peak, so if i set here 150 khz, then the compressor will act as if it was two times louder
 		.audio_deviation = 75000.0f, // another way to set the volume
 		.master_volume = 1.0f, // Volume of everything combined, for calibration
-		.audio_volume = 1.0f, // Volume of the audio, before stereo encoding, before clipper
 		.audio_preamp = 1.0f, // Volume of the audio before the filters
 
 		.sample_rate = 192000, // Sample rate for this whole gizmo to run on
@@ -559,6 +524,8 @@ int main(int argc, char **argv) {
 		printf("Please set the output device");
 		return 1;
 	}
+
+	if (config.volumes.drive < 0.01f) config.volumes.drive = 0.01f;
 
 	config.master_volume *= config.audio_deviation/75000.0f;
 
