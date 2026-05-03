@@ -17,6 +17,7 @@
 #define BUFFER_SIZE 4998 // This defines how many samples to process at a time, because the loop here is this: get signal -> process signal -> output signal, and when we get signal we actually get BUFFER_SIZE of them
 
 #include "../io/audio.h"
+#include "../io/ipc.h"
 
 static volatile sig_atomic_t to_run = 1;
 static volatile sig_atomic_t to_reload = 0;
@@ -456,8 +457,37 @@ void init_runtime(FM95_Runtime* runtime, const FM95_Config config) {
 	}
 }
 
+#define BUF_SIZE 256
+static void *handle_client(void *arg) {
+    int fd = *(int *)arg;
+    free(arg);
+
+    char buf[BUF_SIZE];
+    ssize_t n;
+
+    while ((n = recv(fd, buf, sizeof(buf) - 1, 0)) > 0) {
+        buf[n] = '\0';
+        printf("[client fd=%d] %s\n", fd, buf);
+
+        char reply[BUF_SIZE];
+        snprintf(reply, sizeof(reply), "ECHO: %s", buf);
+        send(fd, reply, strlen(reply), 0);
+    }
+
+    printf("[client fd=%d] disconnected\n", fd);
+    close(fd);
+    return NULL;
+}
+
 int main(int argc, char **argv) {
 	printf("fm95 (an FM Processor by radio95) version 2.5\n");
+
+	ipc_ctx_t ctx = NULL;
+	if(create_ipc(&ctx, handle_client, "/etc/fm95/ctl.socket") < 0) {
+		printf("Could not create IPC.\n");
+		ctx = NULL;
+	}
+
 
 	FM95_Config config = {
 		.volumes = {
@@ -573,5 +603,6 @@ int main(int argc, char **argv) {
 		cleanup_audio_runtime(&runtime, config.options);
 		break;
 	}
+	if(ctx != NULL) destroy_ipc(&ctx);
 	return ret;
 }
