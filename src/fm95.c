@@ -95,6 +95,8 @@ typedef struct {
 
 typedef struct {
 	float mpx_power;
+	float bs412_gain;
+	float agc_gain;
 } FM95_RunResult;
 
 bool compare_dvs(const FM95_DeviceNames *a, const FM95_DeviceNames *b) {
@@ -209,6 +211,7 @@ int run_fm95(const FM95_Config config, FM95_Runtime* runtime, FM95_RunResult* re
 				float agc_gain = process_agc(&runtime->agc, 0.5f * (fabsf(l) + fabsf(r)));
 				l *= agc_gain;
 				r *= agc_gain;
+				temp_result.agc_gain = agc_gain;
 			}
 
 			float mod_l, mod_r;
@@ -243,6 +246,7 @@ int run_fm95(const FM95_Config config, FM95_Runtime* runtime, FM95_RunResult* re
 			}
 
 			mpx = bs412_compress(&runtime->bs412, audio, mpx+mpx_in[i], &temp_result.mpx_power);
+			result->bs412_gain = runtime->bs412.gain;
 
 			output[i] = tanhf(mpx)*config.master_volume; // Ensure peak deviation of 75 khz (or the set deviation), assuming we're calibrated correctly
 			advance_oscillator(&runtime->osc);
@@ -258,7 +262,6 @@ int run_fm95(const FM95_Config config, FM95_Runtime* runtime, FM95_RunResult* re
 
 	return 0;
 }
-
 
 int parse_arguments(int argc, char **argv, FM95_Config* config) {
 	int opt;
@@ -481,28 +484,53 @@ static void *handle_client(ipc_client_arg_t *arg) {
     ssize_t n;
 
     while ((n = recv(fd, buf, sizeof(buf) - 1, 0)) > 0) {
-		reply = 0;
+		reply = 0xff;
         buf[n] = '\0';
 		switch (buf[0]) {
 			case 1:
 				// Reload
 				to_run = 0;
 				to_reload = 1;
+				reply = 0;
 				break;
 			case 2:
 				// Quit
 				to_run = 0;
 				to_reload = 0;
+				reply = 0;
 				break;
 			case 100:
 				// Toggle stereo
 				data->config->stereo ^= 1;
+				reply = 0;
 				break;
 			case 101:
 				// Set makeup
 				float val;
 				memcpy(&val, buf + 1, sizeof(float));
 				data->config->volumes.makeup = val;
+				reply = 0;
+				break;
+			case 102:
+				// Set drive
+				float val;
+				memcpy(&val, buf + 1, sizeof(float));
+				data->config->volumes.drive = val;
+				reply = 0;
+				break;
+			case 103:
+				// Set audio preamp
+				float val;
+				memcpy(&val, buf + 1, sizeof(float));
+				data->config->audio_preamp = val;
+				reply = 0;
+				break;
+			case 104:
+				// Set master volume
+				float val;
+				memcpy(&val, buf + 1, sizeof(float));
+				data->config->master_volume = val;
+				reply = 0;
 				break;
 			case 0xff:
 				// Fetch data
@@ -513,7 +541,7 @@ static void *handle_client(ipc_client_arg_t *arg) {
 				break;
 		}
 
-        send(fd, &reply, 1, 0);
+        if(reply != 0xff) send(fd, &reply, 1, 0);
     }
 
     printf("[client fd=%d] disconnected\n", fd);
