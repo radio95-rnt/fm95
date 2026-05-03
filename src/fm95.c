@@ -458,6 +458,9 @@ void init_runtime(FM95_Runtime* runtime, const FM95_Config config) {
 }
 
 #define BUF_SIZE 256
+#define PREFIX "ECHO: "
+#define PREFIX_LEN  6
+
 static void *handle_client(void *arg) {
     int fd = *(int *)arg;
     free(arg);
@@ -469,8 +472,8 @@ static void *handle_client(void *arg) {
         buf[n] = '\0';
         printf("[client fd=%d] %s\n", fd, buf);
 
-        char reply[BUF_SIZE];
-        snprintf(reply, sizeof(reply), "ECHO: %s", buf);
+        char reply[BUF_SIZE + PREFIX_LEN];
+        snprintf(reply, sizeof(reply), PREFIX "%s", buf);
         send(fd, reply, strlen(reply), 0);
     }
 
