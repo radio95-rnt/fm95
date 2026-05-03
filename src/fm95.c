@@ -482,10 +482,11 @@ static void *handle_client(void *arg) {
 int main(int argc, char **argv) {
 	printf("fm95 (an FM Processor by radio95) version 2.5\n");
 
-	ipc_ctx_t ctx = NULL;
-	if(create_ipc(&ctx, handle_client, "/etc/fm95/ctl.socket") < 0) {
+	ipc_ctx_t ctx;
+	ipc_ctx_t *pctx = &ctx;
+	if(create_ipc(pctx, handle_client, "/etc/fm95/ctl.socket") < 0) {
 		printf("Could not create IPC.\n");
-		ctx = NULL;
+		pctx = NULL;
 	}
 
 
@@ -603,6 +604,6 @@ int main(int argc, char **argv) {
 		cleanup_audio_runtime(&runtime, config.options);
 		break;
 	}
-	if(ctx != NULL) destroy_ipc(&ctx);
+	if(pctx != NULL) destroy_ipc(pctx);
 	return ret;
 }

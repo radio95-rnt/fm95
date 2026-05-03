@@ -1,12 +1,9 @@
 #include "ipc.h"
 
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
 #include <errno.h>
 #include <pthread.h>
-#include <sys/socket.h>
 #include <sys/un.h>
 
 static int make_server_socket(const char *path)
