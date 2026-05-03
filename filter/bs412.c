@@ -11,7 +11,7 @@ inline float dbr_to_deviation(float dbr) {
 #define SQRT19000 180499999.99999997f // (19000 / sqrt(2)) * 19000 / sqrt(2)
 inline float deviation_to_dbr(float deviation) {
 	if (deviation < 1e-6f) return -100.0f;
-	return 10*log10f((deviation*deviation)/SQRT19000);
+	return 10*log10f(deviation/SQRT19000);
 }
 
 void init_bs412(BS412Compressor* comp, uint32_t mpx_deviation, float target_power, float attack, float release, float max_gain, uint32_t sample_rate) {
