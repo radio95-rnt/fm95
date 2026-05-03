@@ -31,7 +31,7 @@ void init_bs412(BS412Compressor* comp, uint32_t mpx_deviation, float target_powe
 	#endif
 }
 
-float bs412_compress(BS412Compressor* comp, float audio, float sample_mpx) {
+float bs412_compress(BS412Compressor* comp, float audio, float sample_mpx, float* mpx_power) {
 	float combined = audio + sample_mpx;
 	float output_sample = (audio * comp->gain) + sample_mpx;
 
@@ -65,6 +65,8 @@ float bs412_compress(BS412Compressor* comp, float audio, float sample_mpx) {
 	}
 
 	comp->sample_counter++;
+
+	if(mpx_power != NULL) *mpx_power = deviation_to_dbr(avg_power);
 
 	if(comp->can_compress) return output_sample;
 	return combined;

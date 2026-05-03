@@ -93,6 +93,10 @@ typedef struct {
     FM95_DeviceNames* devices;
 } FM95_SetupContext;
 
+typedef struct {
+	float mpx_power;
+} FM95_RunResult;
+
 bool compare_dvs(const FM95_DeviceNames *a, const FM95_DeviceNames *b) {
     return strcmp(a->input, b->input) == 0 && strcmp(a->output, b->output) == 0 && strcmp(a->mpx, b->mpx) == 0 && strcmp(a->rds, b->rds) == 0;
 }
@@ -143,8 +147,9 @@ void cleanup_audio_runtime(FM95_Runtime *rt, const FM95_Options options) {
     free_PulseDevice(&rt->output_device);
 }
 
-int run_fm95(const FM95_Config config, FM95_Runtime* runtime) {
+int run_fm95(const FM95_Config config, FM95_Runtime* runtime, FM95_RunResult* result) {
 	float output[BUFFER_SIZE];
+	FM95_RunResult temp_result = {};
 
 	int pulse_error;
 
@@ -172,9 +177,9 @@ int run_fm95(const FM95_Config config, FM95_Runtime* runtime) {
 	bool mpx_on = config.options.mpx_on;
 	bool rds_on = config.options.rds_on;
 
-	float softclip_norm = config.volumes.makeup / tanhf(config.volumes.drive);
-
 	while (to_run) {
+		float softclip_norm = config.volumes.makeup / tanhf(config.volumes.drive);
+
 		if((pulse_error = read_PulseInputDevice(&runtime->input_device, audio_stereo_input, sizeof(audio_stereo_input)))) { // get output from the function and assign it into pulse_error, this comment to avoid confusion
 			fprintf(stderr, "Error reading from input device: %s\n", pa_strerror(pulse_error));
 			to_run = 0;
@@ -237,11 +242,12 @@ int run_fm95(const FM95_Config config, FM95_Runtime* runtime) {
 				}
 			}
 
-			mpx = bs412_compress(&runtime->bs412, audio, mpx+mpx_in[i]);
+			mpx = bs412_compress(&runtime->bs412, audio, mpx+mpx_in[i], &temp_result.mpx_power);
 
 			output[i] = tanhf(mpx)*config.master_volume; // Ensure peak deviation of 75 khz (or the set deviation), assuming we're calibrated correctly
 			advance_oscillator(&runtime->osc);
 		}
+		memcpy(result, &temp_result, sizeof(FM95_RunResult));
 
 		if((pulse_error = write_PulseOutputDevice(&runtime->output_device, output, sizeof(output)))) {
 			fprintf(stderr, "Error writing to output device: %s\n", pa_strerror(pulse_error));
@@ -458,23 +464,56 @@ void init_runtime(FM95_Runtime* runtime, const FM95_Config config) {
 }
 
 #define BUF_SIZE 256
-#define PREFIX "ECHO: "
-#define PREFIX_LEN  6
 
-static void *handle_client(void *arg) {
-    int fd = *(int *)arg;
+typedef struct {
+	FM95_Runtime* runtime;
+	FM95_Config* config;
+	FM95_RunResult* run_result;
+} FM95_Data;
+
+static void *handle_client(ipc_client_arg_t *arg) {
+    int fd = arg->client_fd;
+	FM95_Data* data = arg->user_data;
     free(arg);
 
     char buf[BUF_SIZE];
+	char reply = 0;
     ssize_t n;
 
     while ((n = recv(fd, buf, sizeof(buf) - 1, 0)) > 0) {
+		reply = 0;
         buf[n] = '\0';
-        printf("[client fd=%d] %s\n", fd, buf);
+		switch (buf[0]) {
+			case 1:
+				// Reload
+				to_run = 0;
+				to_reload = 1;
+				break;
+			case 2:
+				// Quit
+				to_run = 0;
+				to_reload = 0;
+				break;
+			case 100:
+				// Toggle stereo
+				data->config->stereo ^= 1;
+				break;
+			case 101:
+				// Set makeup
+				float val;
+				memcpy(&val, buf + 1, sizeof(float));
+				data->config->volumes.makeup = val;
+				break;
+			case 0xff:
+				// Fetch data
+        		send(fd, data->run_result, sizeof(FM95_RunResult), 0);
+				break;
+			default:
+				reply = 1; // Unknown command
+				break;
+		}
 
-        char reply[BUF_SIZE + PREFIX_LEN];
-        snprintf(reply, sizeof(reply), PREFIX "%s", buf);
-        send(fd, reply, strlen(reply), 0);
+        send(fd, &reply, 1, 0);
     }
 
     printf("[client fd=%d] disconnected\n", fd);
@@ -484,14 +523,6 @@ static void *handle_client(void *arg) {
 
 int main(int argc, char **argv) {
 	printf("fm95 (an FM Processor by radio95) version 2.5\n");
-
-	ipc_ctx_t ctx;
-	ipc_ctx_t *pctx = &ctx;
-	if(create_ipc(pctx, handle_client, "/etc/fm95/ctl.socket") < 0) {
-		printf("Could not create IPC.\n");
-		pctx = NULL;
-	}
-
 
 	FM95_Config config = {
 		.volumes = {
@@ -580,9 +611,22 @@ int main(int argc, char **argv) {
 
 	init_runtime(&runtime, config);
 
+	FM95_RunResult runres = {};
+	FM95_Data fmdata = {
+		.config = &config,
+		.runtime = &runtime,
+		.run_result = &runres
+	};
+	ipc_ctx_t ctx;
+	ipc_ctx_t *pctx = &ctx;
+	if(create_ipc(pctx, handle_client, "/etc/fm95/ctl.socket", &fmdata) < 0) {
+		printf("Could not create IPC.\n");
+		pctx = NULL;
+	}
+
 	int ret;
 	while(true) {
-		ret = run_fm95(config, &runtime);
+		ret = run_fm95(config, &runtime, &runres);
 		if(to_reload) {
 			to_reload = 0;
 			printf("Reloading...\n");

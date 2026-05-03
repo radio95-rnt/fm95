@@ -43,14 +43,16 @@ static void *listener_thread(void *arg) {
 
         printf("[ipc] new client fd=%d\n", client_fd);
 
-        int *fd_ptr = malloc(sizeof(int));
-        if (!fd_ptr) { close(client_fd); continue; }
-        *fd_ptr = client_fd;
+        ipc_client_arg_t *carg = malloc(sizeof(ipc_client_arg_t));
+        if (!carg) { close(client_fd); continue; }
+        carg->client_fd = client_fd;
+        carg->user_data = ctx->user_data;
 
         pthread_t tid;
-        if (pthread_create(&tid, NULL, ctx->handler, fd_ptr) != 0) {
+        if (pthread_create(&tid, NULL,
+                           (void *(*)(void *))ctx->handler, carg) != 0) {
             perror("ipc: pthread_create");
-            free(fd_ptr);
+            free(carg);
             close(client_fd);
             continue;
         }
@@ -61,10 +63,13 @@ static void *listener_thread(void *arg) {
     return NULL;
 }
 
-int create_ipc(ipc_ctx_t *ctx, ipc_client_fn handler, const char* socket_path) {
-    ctx->handler = handler;
-    ctx->running = 1;
-    ctx->server_fd = make_server_socket(socket_path);
+int create_ipc(ipc_ctx_t *ctx, ipc_client_fn handler,
+               const char *socket_path, void *user_data)
+{
+    ctx->handler     = handler;
+    ctx->user_data   = user_data;
+    ctx->running     = 1;
+    ctx->server_fd   = make_server_socket(socket_path);
     ctx->socket_path = strdup(socket_path);
     if (ctx->server_fd < 0) return -1;
 
@@ -76,7 +81,6 @@ int create_ipc(ipc_ctx_t *ctx, ipc_client_fn handler, const char* socket_path) {
         return -1;
     }
 
-    /* store tid so destroy_ipc can join it */
     ctx->_tid = tid;
 
     printf("[ipc] listening on %s\n", socket_path);
