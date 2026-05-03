@@ -66,7 +66,7 @@ float bs412_compress(BS412Compressor* comp, float audio, float sample_mpx, float
 
 	comp->sample_counter++;
 
-	if(mpx_power != NULL) *mpx_power = deviation_to_dbr(avg_power);
+	if(mpx_power != NULL) *mpx_power = deviation_to_dbr(comp->avg_power);
 
 	if(comp->can_compress) return output_sample;
 	return combined;
