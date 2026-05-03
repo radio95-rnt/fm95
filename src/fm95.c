@@ -482,6 +482,7 @@ static void *handle_client(ipc_client_arg_t *arg) {
     char buf[BUF_SIZE];
 	char reply = 0;
     ssize_t n;
+	float val;
 
     while ((n = recv(fd, buf, sizeof(buf) - 1, 0)) > 0) {
 		reply = 0xff;
@@ -506,28 +507,24 @@ static void *handle_client(ipc_client_arg_t *arg) {
 				break;
 			case 101:
 				// Set makeup
-				float val;
 				memcpy(&val, buf + 1, sizeof(float));
 				data->config->volumes.makeup = val;
 				reply = 0;
 				break;
 			case 102:
 				// Set drive
-				float val;
 				memcpy(&val, buf + 1, sizeof(float));
 				data->config->volumes.drive = val;
 				reply = 0;
 				break;
 			case 103:
 				// Set audio preamp
-				float val;
 				memcpy(&val, buf + 1, sizeof(float));
 				data->config->audio_preamp = val;
 				reply = 0;
 				break;
 			case 104:
 				// Set master volume
-				float val;
 				memcpy(&val, buf + 1, sizeof(float));
 				data->config->master_volume = val;
 				reply = 0;
