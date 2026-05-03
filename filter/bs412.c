@@ -8,10 +8,10 @@ inline float dbr_to_deviation(float dbr) {
 	return 19000.0f * sqrtf(pow(10.0, dbr / 10.0));
 }
 
-#define SQRT19000 180499999.99999997f // (19000 / sqrt(2)) * 19000 / sqrt(2)
-inline float deviation_to_dbr(float deviation) {
-	if (deviation < 1e-6f) return -100.0f;
-	return 10*log10f(deviation/SQRT19000);
+#define REF_POWER (19000.0f * 19000.0f)  // 361,000,000
+inline float power_to_dbr(float power) {
+    if (power < 1e-12f) return -100.0f;
+    return 10*log10f(power / REF_POWER);
 }
 
 void init_bs412(BS412Compressor* comp, uint32_t mpx_deviation, float target_power, float attack, float release, float max_gain, uint32_t sample_rate) {
@@ -66,7 +66,7 @@ float bs412_compress(BS412Compressor* comp, float audio, float sample_mpx, float
 
 	comp->sample_counter++;
 
-	if(mpx_power != NULL) *mpx_power = deviation_to_dbr(comp->avg_power);
+	if(mpx_power != NULL) *mpx_power = power_to_dbr(comp->avg_power);
 
 	if(comp->can_compress) return output_sample;
 	return combined;
