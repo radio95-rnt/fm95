@@ -95,12 +95,12 @@ typedef struct {
 } FM95_SetupContext;
 
 typedef struct {
-	uint32_t sample_counter;
 	float mpx_power;
 	float bs412_gain;
 	float agc_gain;
 	float input_level;
 	float audio_level;
+	float deviation;
 } FM95_RunResult;
 
 static inline bool compare_dvs(const FM95_DeviceNames *a, const FM95_DeviceNames *b) {
@@ -205,8 +205,9 @@ int run_fm95(const FM95_Config config, FM95_Runtime* runtime, FM95_RunResult* re
 			}
 		}
 
-		uint16_t i;
-		for(i = 0; i < BUFFER_SIZE; i++) {
+		for(uint16_t i = 0; i < BUFFER_SIZE; i++) {
+			bool do_result = (i == BUFFER_SIZE - 1);
+
 			float mpx = 0.0f;
 			float audio = 0.0f;
 
@@ -214,13 +215,13 @@ int run_fm95(const FM95_Config config, FM95_Runtime* runtime, FM95_RunResult* re
 			float r = audio_stereo_input[2*i+1]*config.audio_preamp;
 
 			float mono = 0.5f * (fabsf(l) + fabsf(r));
-			temp_result.input_level += mono;
+			temp_result.input_level = mono;
 
 			if(config.agc_max != 0.0) {
 				float agc_gain = process_agc(&runtime->agc, mono);
 				l *= agc_gain;
 				r *= agc_gain;
-				temp_result.agc_gain += agc_gain;
+				temp_result.agc_gain = agc_gain;
 			}
 
 			float mod_l, mod_r;
@@ -238,7 +239,7 @@ int run_fm95(const FM95_Config config, FM95_Runtime* runtime, FM95_RunResult* re
 			mod_l = tanhf(mod_l * config.volumes.drive) * softclip_norm;
 			mod_r = tanhf(mod_r * config.volumes.drive) * softclip_norm;
 
-			temp_result.audio_level += (mod_l + mod_r) * 0.5f;
+			if(do_result) temp_result.audio_level = (mod_l + mod_r) * 0.5f;
 
 			mpx = stereo_encode(&runtime->stencode, config.stereo, mod_l, mod_r, &audio);
 
@@ -257,12 +258,13 @@ int run_fm95(const FM95_Config config, FM95_Runtime* runtime, FM95_RunResult* re
 			}
 
 			mpx = bs412_compress(&runtime->bs412, audio, mpx+mpx_in[i], &temp_result.mpx_power);
-			temp_result.bs412_gain += runtime->bs412.gain;
+			temp_result.bs412_gain = runtime->bs412.gain;
+			mpx = tanhf(mpx);
 
-			output[i] = tanhf(mpx)*config.master_volume; // Ensure peak deviation of 75 khz (or the set deviation), assuming we're calibrated correctly
+			if(do_result) temp_result.deviation = mpx * config.mpx_deviation;
+			output[i] = mpx*config.master_volume; // Ensure peak deviation of 75 khz (or the set deviation), assuming we're calibrated correctly
 			advance_oscillator(&runtime->osc);
-		} temp_result.sample_counter = i;
-		memcpy(result, &temp_result, sizeof(FM95_RunResult));
+		} memcpy(result, &temp_result, sizeof(FM95_RunResult));
 		_pulse_output;
 	}
 
