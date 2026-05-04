@@ -32,8 +32,8 @@ void reinit_bs412(BS412Compressor* comp, uint32_t mpx_deviation, float target_po
 	comp->reference = (19000.0f / mpx_deviation) * (19000.0f / mpx_deviation); // 0 dbr is a signal which generates a deviation of 19 khz
 	comp->target = comp->reference * powf(10.0f, target_power / 10.0f);;
 	comp->gate_threshold = comp->reference * powf(10.0f, gate / 10.0f);
-	comp->attack = expf(-1.0f / (attack * sample_rate));
-	comp->release = expf(-1.0f / (release * sample_rate));
+	comp->attack = expf(-1.0f / (attack * comp->sample_rate));
+	comp->release = expf(-1.0f / (release * comp->sample_rate));
 	comp->max_gain = max_gain;
 }
 
