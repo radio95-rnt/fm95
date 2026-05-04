@@ -7,6 +7,7 @@
 #include <math.h>
 #include <string.h>
 #include <stdint.h>
+#include <stdbool.h>
 #ifdef BS412_DEBUG
 #include "../lib/debug.h"
 #endif
