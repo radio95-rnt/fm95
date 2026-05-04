@@ -100,7 +100,6 @@ typedef struct {
 	float agc_gain;
 	float input_level;
 	float audio_level;
-	float deviation;
 } FM95_RunResult;
 
 static inline bool compare_dvs(const FM95_DeviceNames *a, const FM95_DeviceNames *b) {
@@ -261,7 +260,6 @@ int run_fm95(const FM95_Config config, FM95_Runtime* runtime, FM95_RunResult* re
 			temp_result.bs412_gain = runtime->bs412.gain;
 			mpx = tanhf(mpx);
 
-			if(do_result) temp_result.deviation = mpx * config.mpx_deviation;
 			output[i] = mpx*config.master_volume; // Ensure peak deviation of 75 khz (or the set deviation), assuming we're calibrated correctly
 			advance_oscillator(&runtime->osc);
 		} memcpy(result, &temp_result, sizeof(FM95_RunResult));
