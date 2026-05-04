@@ -11,9 +11,8 @@
 #include "../lib/debug.h"
 #endif
 
-typedef struct
-{
-	uint32_t mpx_deviation;
+typedef struct {
+	float reference;
 	uint32_t sample_rate;
 	uint32_t sample_counter;
 	float target;
@@ -26,7 +25,10 @@ typedef struct
 	uint8_t can_compress : 1;
 	uint8_t second_counter;
 	float last_output;
+	float gate_threshold;
+	bool init;
 } BS412Compressor;
 
-void init_bs412(BS412Compressor *comp, uint32_t mpx_deviation, float target_power, float attack, float release, float max_gain, uint32_t sample_rate);
+void init_bs412(BS412Compressor *comp, uint32_t mpx_deviation, float target_power, float attack, float release, float max_gain, float gate, uint32_t sample_rate);
+void reinit_bs412(BS412Compressor *comp, uint32_t mpx_deviation, float target_power, float attack, float release, float max_gain, float gate);
 float bs412_compress(BS412Compressor *comp, float audio, float sample_mpx, float* mpx_power);

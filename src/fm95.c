@@ -66,6 +66,7 @@ typedef struct {
 	float bs412_attack;
 	float bs412_release;
 	float bs412_max;
+	float bs412_gate;
 	float lpf_cutoff;
 } FM95_Config;
 
@@ -328,6 +329,7 @@ static int config_handler(void* user, const char* section, const char* name, con
 	else if(MATCH("fm95", "bs412_attack")) pconfig->bs412_attack = strtof(value, NULL);
 	else if(MATCH("fm95", "bs412_release")) pconfig->bs412_release = strtof(value, NULL);
 	else if(MATCH("fm95", "bs412_max")) pconfig->bs412_max = strtof(value, NULL);
+	else if(MATCH("fm95", "bs412_gate")) pconfig->bs412_gate = strtof(value, NULL);
 	else if(MATCH("advanced", "lpf_order")) pconfig->lpf_order = atoi(value);
 	else if(MATCH("advanced", "stereo_ssb")) pconfig->stereo_ssb = atoi(value);
 	else if(MATCH("advanced", "preemp_unity")) pconfig->preemp_unity_freq = strtof(value, NULL);
@@ -437,25 +439,9 @@ void init_runtime(FM95_Runtime* runtime, const FM95_Config config) {
 		init_preemphasis(&runtime->preemp_r, (float)config.preemphasis * 1.0e-6f, config.sample_rate, config.preemp_unity_freq);
 	}
 
-	float last_gain = 0.0f;
-	float last_power = 0.0f;
-	uint8_t last_compress = 0;
-	uint8_t last_sample_counter = 0;
-	uint8_t last_second_counter = 0;
-	if(runtime->bs412.sample_rate == config.sample_rate) {
-		last_gain = runtime->bs412.gain;
-		last_power = runtime->bs412.avg_power;
-		last_compress = runtime->bs412.can_compress;
-		last_sample_counter = runtime->bs412.sample_counter;
-		last_second_counter = runtime->bs412.second_counter;
-	}
-	init_bs412(&runtime->bs412, config.mpx_deviation, config.mpx_power, config.bs412_attack, config.bs412_release, config.bs412_max, config.sample_rate);
-	runtime->bs412.gain = last_gain;
-	runtime->bs412.avg_power = last_power;
-	runtime->bs412.can_compress = last_compress;
-	runtime->bs412.sample_counter = last_sample_counter;
-	runtime->bs412.second_counter = last_second_counter;
-
+	if(runtime->bs412.init == true && (runtime->bs412.sample_rate == config.sample_rate)) {
+		reinit_bs412(&runtime->bs412, config.mpx_deviation, config.mpx_power, config.bs412_attack, config.bs412_release, config.bs412_max, config.bs412_gate)
+	} else init_bs412(&runtime->bs412, config.mpx_deviation, config.mpx_power, config.bs412_attack, config.bs412_release, config.bs412_max, config.bs412_gate, config.sample_rate);
 	init_stereo_encoder(&runtime->stencode, config.stereo_ssb, 4.0f, &runtime->osc, config.volumes.audio, config.volumes.pilot);
 
 	if(config.agc_max != 0.0) {
@@ -529,6 +515,14 @@ static void *handle_client(ipc_client_arg_t *arg) {
 				data->config->master_volume = val;
 				reply = 0;
 				break;
+			case 105:
+				// Set BS412 gate
+				memcpy(&val, buf + 1, sizeof(float));
+				data->config->bs412_gate = val;
+				reply = 0;
+				to_run = 0;
+				to_reload = 1;
+				break;
 			case 0xff:
 				// Fetch data
         		send(fd, data->run_result, sizeof(FM95_RunResult), 0);
@@ -585,6 +579,7 @@ int main(int argc, char **argv) {
 		.bs412_attack = 0.05f,
 		.bs412_release = 0.025f,
 		.bs412_max = 2.82f,
+		.bs412_gate = -20.0f,
 		.lpf_cutoff = 15000.0f,
 	};
 
@@ -642,6 +637,7 @@ int main(int argc, char **argv) {
 		.runtime = &runtime,
 		.run_result = &runres
 	};
+
 	ipc_ctx_t ctx;
 	ipc_ctx_t *pctx = &ctx;
 	if(create_ipc(pctx, handle_client, "/etc/fm95/ctl.socket", &fmdata) < 0) {
