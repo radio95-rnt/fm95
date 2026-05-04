@@ -95,16 +95,19 @@ typedef struct {
 } FM95_SetupContext;
 
 typedef struct {
+	uint32_t sample_counter;
 	float mpx_power;
 	float bs412_gain;
 	float agc_gain;
+	float input_level;
+	float audio_level;
 } FM95_RunResult;
 
-bool compare_dvs(const FM95_DeviceNames *a, const FM95_DeviceNames *b) {
+static inline bool compare_dvs(const FM95_DeviceNames *a, const FM95_DeviceNames *b) {
     return strcmp(a->input, b->input) == 0 && strcmp(a->output, b->output) == 0 && strcmp(a->mpx, b->mpx) == 0 && strcmp(a->rds, b->rds) == 0;
 }
 
-float calculate_sharedaudio_volume(const FM95_Volumes volumes, const int rds_streams) {
+static float calculate_sharedaudio_volume(const FM95_Volumes volumes, const int rds_streams) {
 	float rds_volume = volumes.rds * powf(volumes.rds_step, rds_streams);
 	return 1.0f - rds_volume - volumes.pilot - volumes.headroom;
 }
@@ -136,8 +139,7 @@ void cleanup_runtime(FM95_Runtime* runtime, const FM95_Config config) {
 		if(runtime->lpf_l != NULL) iirfilt_rrrf_destroy(runtime->lpf_l);
 		if(runtime->lpf_r != NULL) iirfilt_rrrf_destroy(runtime->lpf_r);
 		runtime->lpf_l = runtime->lpf_r = NULL;
-	}
-	exit_stereo_encoder(&runtime->stencode);
+	} exit_stereo_encoder(&runtime->stencode);
 }
 
 void cleanup_audio_runtime(FM95_Runtime *rt, const FM95_Options options) {
@@ -146,13 +148,20 @@ void cleanup_audio_runtime(FM95_Runtime *rt, const FM95_Options options) {
     if (options.rds_on) {
 		free_PulseDevice(&rt->rds_device);
 		free(rt->rds_in);
-	}
-    free_PulseDevice(&rt->output_device);
+	} free_PulseDevice(&rt->output_device);
+}
+
+#define _pulse_output \
+if((pulse_error = write_PulseOutputDevice(&runtime->output_device, output, sizeof(output)))) { \
+	fprintf(stderr, "Error writing to output device: %s\n", pa_strerror(pulse_error)); \
+	to_run = 0; \
+	break; \
 }
 
 int run_fm95(const FM95_Config config, FM95_Runtime* runtime, FM95_RunResult* result) {
 	float output[BUFFER_SIZE];
-	FM95_RunResult temp_result = {};
+	FM95_RunResult temp_result;
+	memset(&temp_result, 0, sizeof(FM95_RunResult));
 
 	int pulse_error;
 
@@ -163,12 +172,7 @@ int run_fm95(const FM95_Config config, FM95_Runtime* runtime, FM95_RunResult* re
 				if(config.calibration == 2) sample = (sample > 0.0f) ? 1.0f : -1.0f; // Sine wave to square wave filter, 50% duty cycle
 				else if(config.calibration == 3) sample *= (19000/config.mpx_deviation);
 				output[i] = sample*config.master_volume;
-			}
-			if((pulse_error = write_PulseOutputDevice(&runtime->output_device, output, sizeof(output)))) {
-				fprintf(stderr, "Error writing to output device: %s\n", pa_strerror(pulse_error));
-				to_run = 0;
-				break;
-			}
+			} _pulse_output;
 		}
 		return 0;
 	}
@@ -208,11 +212,13 @@ int run_fm95(const FM95_Config config, FM95_Runtime* runtime, FM95_RunResult* re
 			float l = audio_stereo_input[2*i+0]*config.audio_preamp;
 			float r = audio_stereo_input[2*i+1]*config.audio_preamp;
 
+			temp_result.input_level = 0.5f * (fabsf(l) + fabsf(r));
+
 			if(config.agc_max != 0.0) {
-				float agc_gain = process_agc(&runtime->agc, 0.5f * (fabsf(l) + fabsf(r)));
+				float agc_gain = process_agc(&runtime->agc, temp_result.input_level);
 				l *= agc_gain;
 				r *= agc_gain;
-				temp_result.agc_gain = agc_gain;
+				temp_result.agc_gain += agc_gain;
 			}
 
 			float mod_l, mod_r;
@@ -229,6 +235,8 @@ int run_fm95(const FM95_Config config, FM95_Runtime* runtime, FM95_RunResult* re
 
 			mod_l = tanhf(mod_l * config.volumes.drive) * softclip_norm;
 			mod_r = tanhf(mod_r * config.volumes.drive) * softclip_norm;
+
+			temp_result.audio_level = (mod_l + mod_r) * 0.5f;
 
 			mpx = stereo_encode(&runtime->stencode, config.stereo, mod_l, mod_r, &audio);
 
@@ -251,14 +259,9 @@ int run_fm95(const FM95_Config config, FM95_Runtime* runtime, FM95_RunResult* re
 
 			output[i] = tanhf(mpx)*config.master_volume; // Ensure peak deviation of 75 khz (or the set deviation), assuming we're calibrated correctly
 			advance_oscillator(&runtime->osc);
-		}
+		} temp_result.sample_counter = i;
 		memcpy(result, &temp_result, sizeof(FM95_RunResult));
-
-		if((pulse_error = write_PulseOutputDevice(&runtime->output_device, output, sizeof(output)))) {
-			fprintf(stderr, "Error writing to output device: %s\n", pa_strerror(pulse_error));
-			to_run = 0;
-			break;
-		}
+		_pulse_output;
 	}
 
 	return 0;
@@ -266,12 +269,11 @@ int run_fm95(const FM95_Config config, FM95_Runtime* runtime, FM95_RunResult* re
 
 int parse_arguments(int argc, char **argv, FM95_Config* config) {
 	int opt;
-	const char	*short_opt = "c:h";
-	struct option	long_opt[] =
-	{
-		{"config",		required_argument,	NULL,	'c'},
-		{"help",        no_argument,       NULL, 'h'},
-		{0,             0,                 0,    0}
+	const char *short_opt = "c:h";
+	struct option long_opt[] = {
+		{"config", required_argument, NULL,	'c'},
+		{"help", no_argument, NULL, 'h'},
+		{0, 0, 0, 0}
 	};
 
 	while((opt = getopt_long(argc, argv, short_opt, long_opt, NULL)) != -1) {
@@ -524,6 +526,38 @@ static void *handle_client(ipc_client_arg_t *arg) {
 				to_run = 0;
 				to_reload = 1;
 				break;
+			case 105:
+				// Set BS412 mpx power
+				memcpy(&val, buf + 1, sizeof(float));
+				data->config->mpx_power = val;
+				reply = 0;
+				to_run = 0;
+				to_reload = 1;
+				break;
+			case 106:
+				// Set BS412 attack
+				memcpy(&val, buf + 1, sizeof(float));
+				data->config->bs412_attack = val;
+				reply = 0;
+				to_run = 0;
+				to_reload = 1;
+				break;
+			case 107:
+				// Set BS412 release
+				memcpy(&val, buf + 1, sizeof(float));
+				data->config->bs412_release = val;
+				reply = 0;
+				to_run = 0;
+				to_reload = 1;
+				break;
+			case 108:
+				// Set BS412 max
+				memcpy(&val, buf + 1, sizeof(float));
+				data->config->bs412_max = val;
+				reply = 0;
+				to_run = 0;
+				to_reload = 1;
+				break;
 			case 0xff:
 				// Fetch data
         		send(fd, data->run_result, sizeof(FM95_RunResult), 0);
@@ -542,7 +576,7 @@ static void *handle_client(ipc_client_arg_t *arg) {
 }
 
 int main(int argc, char **argv) {
-	printf("fm95 (an FM Processor by radio95) version 2.5\n");
+	printf("fm95 (an FM Processor by radio95) version 2.6\n");
 
 	FM95_Config config = {
 		.volumes = {
@@ -602,11 +636,11 @@ int main(int argc, char **argv) {
 		return err;
 	}
 
-	if(strlen(dv_names.input) == 0) {
+	if(dv_names.input[0] == 0) {
 		printf("Please set the input device");
 		return 1;
 	}
-	if(strlen(dv_names.output) == 0) {
+	if(dv_names.output[0] == 0) {
 		printf("Please set the output device");
 		return 1;
 	}
@@ -617,11 +651,11 @@ int main(int argc, char **argv) {
 
 	config.volumes.audio = calculate_sharedaudio_volume(config.volumes, config.rds_streams);
 
-	FM95_Runtime runtime;
-	memset(&runtime, 0, sizeof(runtime));
-
 	config.options.mpx_on = (strlen(dv_names.mpx) != 0);
 	config.options.rds_on = (strlen(dv_names.rds) != 0 && config.rds_streams != 0);
+
+	FM95_Runtime runtime;
+	memset(&runtime, 0, sizeof(runtime));
 
 	err = setup_audio(&runtime, dv_names, config);
 	if(err != 0) return err;
@@ -632,7 +666,8 @@ int main(int argc, char **argv) {
 
 	init_runtime(&runtime, config);
 
-	FM95_RunResult runres = {};
+	FM95_RunResult runres;
+	memset(&runres, 0, sizeof(runres));
 	FM95_Data fmdata = {
 		.config = &config,
 		.runtime = &runtime,
