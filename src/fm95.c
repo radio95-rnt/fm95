@@ -212,10 +212,11 @@ int run_fm95(const FM95_Config config, FM95_Runtime* runtime, FM95_RunResult* re
 			float l = audio_stereo_input[2*i+0]*config.audio_preamp;
 			float r = audio_stereo_input[2*i+1]*config.audio_preamp;
 
-			temp_result.input_level = 0.5f * (fabsf(l) + fabsf(r));
+			float mono = 0.5f * (fabsf(l) + fabsf(r));
+			temp_result.input_level += mono;
 
 			if(config.agc_max != 0.0) {
-				float agc_gain = process_agc(&runtime->agc, temp_result.input_level);
+				float agc_gain = process_agc(&runtime->agc, mono);
 				l *= agc_gain;
 				r *= agc_gain;
 				temp_result.agc_gain += agc_gain;
@@ -236,7 +237,7 @@ int run_fm95(const FM95_Config config, FM95_Runtime* runtime, FM95_RunResult* re
 			mod_l = tanhf(mod_l * config.volumes.drive) * softclip_norm;
 			mod_r = tanhf(mod_r * config.volumes.drive) * softclip_norm;
 
-			temp_result.audio_level = (mod_l + mod_r) * 0.5f;
+			temp_result.audio_level += (mod_l + mod_r) * 0.5f;
 
 			mpx = stereo_encode(&runtime->stencode, config.stereo, mod_l, mod_r, &audio);
 
@@ -255,7 +256,7 @@ int run_fm95(const FM95_Config config, FM95_Runtime* runtime, FM95_RunResult* re
 			}
 
 			mpx = bs412_compress(&runtime->bs412, audio, mpx+mpx_in[i], &temp_result.mpx_power);
-			result->bs412_gain = runtime->bs412.gain;
+			temp_result.bs412_gain += runtime->bs412.gain;
 
 			output[i] = tanhf(mpx)*config.master_volume; // Ensure peak deviation of 75 khz (or the set deviation), assuming we're calibrated correctly
 			advance_oscillator(&runtime->osc);
