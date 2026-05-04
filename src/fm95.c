@@ -440,10 +440,11 @@ void init_runtime(FM95_Runtime* runtime, const FM95_Config config) {
 	}
 
 	if(runtime->bs412.init == true && (runtime->bs412.sample_rate == config.sample_rate)) {
-		reinit_bs412(&runtime->bs412, config.mpx_deviation, config.mpx_power, config.bs412_attack, config.bs412_release, config.bs412_max, config.bs412_gate)
+		reinit_bs412(&runtime->bs412, config.mpx_deviation, config.mpx_power, config.bs412_attack, config.bs412_release, config.bs412_max, config.bs412_gate);
 	} else init_bs412(&runtime->bs412, config.mpx_deviation, config.mpx_power, config.bs412_attack, config.bs412_release, config.bs412_max, config.bs412_gate, config.sample_rate);
 	init_stereo_encoder(&runtime->stencode, config.stereo_ssb, 4.0f, &runtime->osc, config.volumes.audio, config.volumes.pilot);
 
+	float last_gain = 0.0f;
 	if(config.agc_max != 0.0) {
 		last_gain = 1.0f;
 		if(runtime->agc.sampleRate == config.sample_rate) last_gain = runtime->agc.currentGain;
