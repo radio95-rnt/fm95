@@ -205,7 +205,8 @@ int run_fm95(const FM95_Config config, FM95_Runtime* runtime, FM95_RunResult* re
 			}
 		}
 
-		for (uint16_t i = 0; i < BUFFER_SIZE; i++) {
+		uint16_t i;
+		for(i = 0; i < BUFFER_SIZE; i++) {
 			float mpx = 0.0f;
 			float audio = 0.0f;
 
@@ -527,7 +528,7 @@ static void *handle_client(ipc_client_arg_t *arg) {
 				to_run = 0;
 				to_reload = 1;
 				break;
-			case 105:
+			case 106:
 				// Set BS412 mpx power
 				memcpy(&val, buf + 1, sizeof(float));
 				data->config->mpx_power = val;
@@ -535,7 +536,7 @@ static void *handle_client(ipc_client_arg_t *arg) {
 				to_run = 0;
 				to_reload = 1;
 				break;
-			case 106:
+			case 107:
 				// Set BS412 attack
 				memcpy(&val, buf + 1, sizeof(float));
 				data->config->bs412_attack = val;
@@ -543,7 +544,7 @@ static void *handle_client(ipc_client_arg_t *arg) {
 				to_run = 0;
 				to_reload = 1;
 				break;
-			case 107:
+			case 108:
 				// Set BS412 release
 				memcpy(&val, buf + 1, sizeof(float));
 				data->config->bs412_release = val;
@@ -551,7 +552,7 @@ static void *handle_client(ipc_client_arg_t *arg) {
 				to_run = 0;
 				to_reload = 1;
 				break;
-			case 108:
+			case 109:
 				// Set BS412 max
 				memcpy(&val, buf + 1, sizeof(float));
 				data->config->bs412_max = val;
