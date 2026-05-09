@@ -157,20 +157,20 @@ if((pulse_error = write_PulseOutputDevice(&runtime->output_device, output, sizeo
 	break; \
 }
 
-int run_fm95(const FM95_Config config, FM95_Runtime* runtime, FM95_RunResult* result) {
+int run_fm95(FM95_Config* config, FM95_Runtime* runtime, FM95_RunResult* result) {
 	float output[BUFFER_SIZE];
 	FM95_RunResult temp_result;
 	memset(&temp_result, 0, sizeof(FM95_RunResult));
 
 	int pulse_error;
 
-	if(config.calibration != 0) {
+	if(config->calibration != 0) {
 		while(to_run) {
 			for (int i = 0; i < BUFFER_SIZE; i++) {
 				float sample = get_oscillator_sin_sample(&runtime->osc);
-				if(config.calibration == 2) sample = (sample > 0.0f) ? 1.0f : -1.0f; // Sine wave to square wave filter, 50% duty cycle
-				else if(config.calibration == 3) sample *= (19000/config.mpx_deviation);
-				output[i] = sample*config.master_volume;
+				if(config->calibration == 2) sample = (sample > 0.0f) ? 1.0f : -1.0f; // Sine wave to square wave filter, 50% duty cycle
+				else if(config->calibration == 3) sample *= (19000/config->mpx_deviation);
+				output[i] = sample*config->master_volume;
 			} _pulse_output;
 		}
 		return 0;
@@ -180,11 +180,11 @@ int run_fm95(const FM95_Config config, FM95_Runtime* runtime, FM95_RunResult* re
 
 	float mpx_in[BUFFER_SIZE] = {0};
 
-	bool mpx_on = config.options.mpx_on;
-	bool rds_on = config.options.rds_on;
+	bool mpx_on = config->options.mpx_on;
+	bool rds_on = config->options.rds_on;
 
 	while (to_run) {
-		float softclip_norm = config.volumes.makeup / tanhf(config.volumes.drive);
+		float softclip_norm = config->volumes.makeup / tanhf(config->volumes.drive);
 
 		if((pulse_error = read_PulseInputDevice(&runtime->input_device, audio_stereo_input, sizeof(audio_stereo_input)))) { // get output from the function and assign it into pulse_error, this comment to avoid confusion
 			fprintf(stderr, "Error reading from input device: %s\n", pa_strerror(pulse_error));
@@ -210,13 +210,13 @@ int run_fm95(const FM95_Config config, FM95_Runtime* runtime, FM95_RunResult* re
 			float mpx = 0.0f;
 			float audio = 0.0f;
 
-			float l = audio_stereo_input[2*i+0]*config.audio_preamp;
-			float r = audio_stereo_input[2*i+1]*config.audio_preamp;
+			float l = audio_stereo_input[2*i+0]*config->audio_preamp;
+			float r = audio_stereo_input[2*i+1]*config->audio_preamp;
 
 			float mono = 0.5f * (fabsf(l) + fabsf(r));
 			temp_result.input_level = mono;
 
-			if(config.agc_max != 0.0) {
+			if(config->agc_max != 0.0) {
 				float agc_gain = process_agc(&runtime->agc, mono);
 				l *= agc_gain;
 				r *= agc_gain;
@@ -225,34 +225,34 @@ int run_fm95(const FM95_Config config, FM95_Runtime* runtime, FM95_RunResult* re
 
 			float mod_l, mod_r;
 
-			if(config.lpf_cutoff != 0) {
+			if(config->lpf_cutoff != 0) {
 				iirfilt_rrrf_execute(runtime->lpf_l, l, &mod_l);
 				iirfilt_rrrf_execute(runtime->lpf_r, r, &mod_r);
 			}
 	
-			if(config.preemphasis != 0) {
+			if(config->preemphasis != 0) {
 				mod_l = apply_preemphasis(&runtime->preemp_l, mod_l);
 				mod_r = apply_preemphasis(&runtime->preemp_r, mod_r);
 			}
 
-			mod_l = tanhf(mod_l * config.volumes.drive) * softclip_norm;
-			mod_r = tanhf(mod_r * config.volumes.drive) * softclip_norm;
+			mod_l = tanhf(mod_l * config->volumes.drive) * softclip_norm;
+			mod_r = tanhf(mod_r * config->volumes.drive) * softclip_norm;
 
 			if(do_result) temp_result.audio_level = (mod_l + mod_r) * 0.5f;
 
-			mpx = stereo_encode(&runtime->stencode, config.stereo, mod_l, mod_r, &audio);
+			mpx = stereo_encode(&runtime->stencode, config->stereo, mod_l, mod_r, &audio);
 
 			if(rds_on) {
-				float rds_level = config.volumes.rds;
+				float rds_level = config->volumes.rds;
 				for(uint8_t stream = 0; stream < config.rds_streams; stream++) {
 					uint8_t osc_stream = 12 + stream;
 					if(osc_stream >= 13) osc_stream++;
 
 					float carrier = get_oscillator_cos_multiplier_ni(&runtime->osc, osc_stream);
-					if(config.stereo_ssb) carrier = delay_line(&runtime->rds_delays[stream], carrier);
-					mpx += (runtime->rds_in[config.rds_streams * i + stream] * carrier) * rds_level;
+					if(config->stereo_ssb) carrier = delay_line(&runtime->rds_delays[stream], carrier);
+					mpx += (runtime->rds_in[config->rds_streams * i + stream] * carrier) * rds_level;
 
-					rds_level *= config.volumes.rds_step; // Prepare level for the next stream
+					rds_level *= config->volumes.rds_step; // Prepare level for the next stream
 				}
 			}
 
@@ -260,7 +260,7 @@ int run_fm95(const FM95_Config config, FM95_Runtime* runtime, FM95_RunResult* re
 			temp_result.bs412_gain = runtime->bs412.gain;
 			mpx = tanhf(mpx);
 
-			output[i] = mpx*config.master_volume; // Ensure peak deviation of 75 khz (or the set deviation), assuming we're calibrated correctly
+			output[i] = mpx*config->master_volume; // Ensure peak deviation of 75 khz (or the set deviation), assuming we're calibrated correctly
 			advance_oscillator(&runtime->osc);
 		} memcpy(result, &temp_result, sizeof(FM95_RunResult));
 		_pulse_output;
@@ -494,7 +494,7 @@ static void *handle_client(ipc_client_arg_t *arg) {
 			case 100:
 				// Toggle stereo
 				data->config->stereo ^= 1;
-				reply = 0;
+				reply = data->config->stereo;
 				break;
 			case 101:
 				// Set makeup
@@ -685,7 +685,7 @@ int main(int argc, char **argv) {
 
 	int ret;
 	while(true) {
-		ret = run_fm95(config, &runtime, &runres);
+		ret = run_fm95(&config, &runtime, &runres);
 		if(to_reload) {
 			to_reload = 0;
 			printf("Reloading...\n");
