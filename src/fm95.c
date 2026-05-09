@@ -198,7 +198,7 @@ int run_fm95(FM95_Config* config, FM95_Runtime* runtime, FM95_RunResult* result)
 			}
 		}
 		if(rds_on) {
-			if((pulse_error = read_PulseInputDevice(&runtime->rds_device, runtime->rds_in, sizeof(float) * BUFFER_SIZE * config.rds_streams))) {
+			if((pulse_error = read_PulseInputDevice(&runtime->rds_device, runtime->rds_in, sizeof(float) * BUFFER_SIZE * config->rds_streams))) {
 				fprintf(stderr, "Error reading from RDS95 device: %s\nDisabling RDS.\n", pa_strerror(pulse_error));
 				rds_on = 0;
 			}
@@ -244,7 +244,7 @@ int run_fm95(FM95_Config* config, FM95_Runtime* runtime, FM95_RunResult* result)
 
 			if(rds_on) {
 				float rds_level = config->volumes.rds;
-				for(uint8_t stream = 0; stream < config.rds_streams; stream++) {
+				for(uint8_t stream = 0; stream < config->rds_streams; stream++) {
 					uint8_t osc_stream = 12 + stream;
 					if(osc_stream >= 13) osc_stream++;
 
