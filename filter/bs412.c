@@ -68,10 +68,6 @@ float bs412_compress(BS412Compressor* comp, float audio, float sample_mpx, float
 	float safe_power = fmaxf(comp->avg_power, 1e-12f);
 	float target_gain = sqrtf(comp->target / safe_power);
 
-	// Soft knee: blend between unity gain and target_gain based on how far
-	// we are inside the knee region. knee_db is the half-width on each side
-	// of the target. Below (target - knee), gain tracks freely toward max_gain.
-	// Above (target + knee), full compression applies. In between, it blends.
 	float level_dbr = power_to_dbr(comp->avg_power, comp->reference);
 	float half_knee = comp->knee_db * 0.5f;
 	float dist = level_dbr - comp->target_dbr; // negative = below target, positive = above
@@ -85,9 +81,7 @@ float bs412_compress(BS412Compressor* comp, float audio, float sample_mpx, float
 		knee_blend = t * t * (3.0f - 2.0f * t);       // smoothstep
 	}
 
-	// The effective target_gain for the smoothed region blends between
-	// current gain (no correction) and the true target_gain.
-	float blended_target = comp->gain + knee_blend * (target_gain - comp->gain);
+	float blended_target = 1.0f + knee_blend * (target_gain - 1.0f);
 
 	float coeff = (comp->avg_power > comp->target) ? comp->attack : comp->release;
 	comp->gain = coeff * comp->gain + (1.0f - coeff) * blended_target;
