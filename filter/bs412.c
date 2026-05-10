@@ -9,32 +9,36 @@ inline float power_to_dbr(float power, float ref) {
     return 10*log10f(power / ref);
 }
 
-void init_bs412(BS412Compressor* comp, uint32_t mpx_deviation, float target_power, float attack, float release, float max_gain, float gate, uint32_t sample_rate) {
-	comp->reference = (19000.0f / mpx_deviation) * (19000.0f / mpx_deviation); // 0 dbr is a signal which generates a deviation of 19 khz
+void init_bs412(BS412Compressor* comp, uint32_t mpx_deviation, float target_power, float attack, float release, float max_gain, float gate, float knee_db, uint32_t sample_rate) {
+	comp->reference = (19000.0f / mpx_deviation) * (19000.0f / mpx_deviation);
 	comp->avg_power = 0.0f;
     comp->alpha = 1.0f / (BS412_TIME * sample_rate);
 	comp->sample_rate = sample_rate;
 	comp->attack = expf(-1.0f / (attack * sample_rate));
 	comp->release = expf(-1.0f / (release * sample_rate));
-	comp->target = comp->reference * powf(10.0f, target_power / 10.0f);;
+	comp->target = comp->reference * powf(10.0f, target_power / 10.0f);
+	comp->target_dbr = power_to_dbr(comp->target, comp->reference);
 	comp->gain = 1.0f;
 	comp->can_compress = 0;
 	comp->second_counter = 0;
 	comp->max_gain = max_gain;
 	comp->gate_threshold = comp->reference * powf(10.0f, gate / 10.0f);
+	comp->knee_db = knee_db; // e.g. 6.0f — width in dB around target on each side
 	comp->init = true;
 	#ifdef BS412_DEBUG
 	debug_printf("Initialized MPX power measurement with sample rate: %d\n", sample_rate);
 	#endif
 }
 
-void reinit_bs412(BS412Compressor* comp, uint32_t mpx_deviation, float target_power, float attack, float release, float max_gain, float gate) {
-	comp->reference = (19000.0f / mpx_deviation) * (19000.0f / mpx_deviation); // 0 dbr is a signal which generates a deviation of 19 khz
-	comp->target = comp->reference * powf(10.0f, target_power / 10.0f);;
+void reinit_bs412(BS412Compressor* comp, uint32_t mpx_deviation, float target_power, float attack, float release, float max_gain, float gate, float knee_db) {
+	comp->reference = (19000.0f / mpx_deviation) * (19000.0f / mpx_deviation);
+	comp->target = comp->reference * powf(10.0f, target_power / 10.0f);
+	comp->target_dbr = power_to_dbr(comp->target, comp->reference);
 	comp->gate_threshold = comp->reference * powf(10.0f, gate / 10.0f);
 	comp->attack = expf(-1.0f / (attack * comp->sample_rate));
 	comp->release = expf(-1.0f / (release * comp->sample_rate));
 	comp->max_gain = max_gain;
+	comp->knee_db = knee_db;
 }
 
 float bs412_compress(BS412Compressor* comp, float audio, float sample_mpx, float* mpx_power) {
@@ -63,16 +67,35 @@ float bs412_compress(BS412Compressor* comp, float audio, float sample_mpx, float
 
 	float safe_power = fmaxf(comp->avg_power, 1e-12f);
 	float target_gain = sqrtf(comp->target / safe_power);
-	if (comp->avg_power > comp->target)
-		comp->gain = comp->attack * comp->gain + (1.0f - comp->attack) * target_gain;
-	else
-		comp->gain = comp->release * comp->gain + (1.0f - comp->release) * target_gain;
-	
+
+	// Soft knee: blend between unity gain and target_gain based on how far
+	// we are inside the knee region. knee_db is the half-width on each side
+	// of the target. Below (target - knee), gain tracks freely toward max_gain.
+	// Above (target + knee), full compression applies. In between, it blends.
+	float level_dbr = power_to_dbr(comp->avg_power, comp->reference);
+	float half_knee = comp->knee_db * 0.5f;
+	float dist = level_dbr - comp->target_dbr; // negative = below target, positive = above
+
+	float knee_blend;
+	if (dist <= -half_knee) knee_blend = 0.0f; // well below target — don't pull gain toward target
+	else if (dist >= half_knee) knee_blend = 1.0f; // well above target — full compression
+	else {
+		// Smooth cubic ramp: 0→1 over the knee width
+		float t = (dist + half_knee) / comp->knee_db; // 0..1
+		knee_blend = t * t * (3.0f - 2.0f * t);       // smoothstep
+	}
+
+	// The effective target_gain for the smoothed region blends between
+	// current gain (no correction) and the true target_gain.
+	float blended_target = comp->gain + knee_blend * (target_gain - comp->gain);
+
+	float coeff = (comp->avg_power > comp->target) ? comp->attack : comp->release;
+	comp->gain = coeff * comp->gain + (1.0f - coeff) * blended_target;
 	comp->gain = CLAMP(comp->gain, 0.01f, comp->max_gain);
 
 	comp->sample_counter++;
 
-	if(mpx_power != NULL) *mpx_power = power_to_dbr(comp->avg_power, comp->reference);
+	if(mpx_power != NULL) *mpx_power = level_dbr;
 
 	if(comp->can_compress) return output_sample;
 	return combined;

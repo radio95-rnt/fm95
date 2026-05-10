@@ -17,6 +17,7 @@ typedef struct {
 	uint32_t sample_rate;
 	uint32_t sample_counter;
 	float target;
+	float target_dbr;
 	float attack;
 	float release;
 	float max_gain;
@@ -28,8 +29,9 @@ typedef struct {
 	float last_output;
 	float gate_threshold;
 	bool init;
+	float knee_db;
 } BS412Compressor;
 
-void init_bs412(BS412Compressor *comp, uint32_t mpx_deviation, float target_power, float attack, float release, float max_gain, float gate, uint32_t sample_rate);
-void reinit_bs412(BS412Compressor *comp, uint32_t mpx_deviation, float target_power, float attack, float release, float max_gain, float gate);
+void init_bs412(BS412Compressor *comp, uint32_t mpx_deviation, float target_power, float attack, float release, float max_gain, float gate, float knee_db, uint32_t sample_rate);
+void reinit_bs412(BS412Compressor *comp, uint32_t mpx_deviation, float target_power, float attack, float release, float max_gain, float gate, float knee_db);
 float bs412_compress(BS412Compressor *comp, float audio, float sample_mpx, float* mpx_power);

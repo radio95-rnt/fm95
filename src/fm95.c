@@ -3,7 +3,7 @@
 #include "../inih/ini.h"
 #include <stdbool.h>
 
-#define DEFAULT_INI_PATH "/etc/fm95.conf"
+#define DEFAULT_INI_PATH "/etc/fm95/fm95.conf"
 
 #define buffer_maxlength 99960
 #define buffer_tlength_fragsize 99960
@@ -67,6 +67,7 @@ typedef struct {
 	float bs412_release;
 	float bs412_max;
 	float bs412_gate;
+	float bs412_knee;
 	float lpf_cutoff;
 } FM95_Config;
 
@@ -221,7 +222,7 @@ int run_fm95(FM95_Config* config, FM95_Runtime* runtime, FM95_RunResult* result)
 				l *= agc_gain;
 				r *= agc_gain;
 				temp_result.agc_gain = agc_gain;
-			}
+			} else temp_result.agc_gain = 0.0f;
 
 			float mod_l, mod_r;
 
@@ -334,6 +335,7 @@ static int config_handler(void* user, const char* section, const char* name, con
 	else if(MATCH("fm95", "bs412_release")) pconfig->bs412_release = strtof(value, NULL);
 	else if(MATCH("fm95", "bs412_max")) pconfig->bs412_max = strtof(value, NULL);
 	else if(MATCH("fm95", "bs412_gate")) pconfig->bs412_gate = strtof(value, NULL);
+	else if(MATCH("fm95", "bs412_knee")) pconfig->bs412_knee = strtof(value, NULL);
 	else if(MATCH("advanced", "lpf_order")) pconfig->lpf_order = atoi(value);
 	else if(MATCH("advanced", "stereo_ssb")) pconfig->stereo_ssb = atoi(value);
 	else if(MATCH("advanced", "preemp_unity")) pconfig->preemp_unity_freq = strtof(value, NULL);
@@ -444,8 +446,8 @@ void init_runtime(FM95_Runtime* runtime, const FM95_Config config) {
 	}
 
 	if(runtime->bs412.init == true && (runtime->bs412.sample_rate == config.sample_rate)) {
-		reinit_bs412(&runtime->bs412, config.mpx_deviation, config.mpx_power, config.bs412_attack, config.bs412_release, config.bs412_max, config.bs412_gate);
-	} else init_bs412(&runtime->bs412, config.mpx_deviation, config.mpx_power, config.bs412_attack, config.bs412_release, config.bs412_max, config.bs412_gate, config.sample_rate);
+		reinit_bs412(&runtime->bs412, config.mpx_deviation, config.mpx_power, config.bs412_attack, config.bs412_release, config.bs412_max, config.bs412_gate, config.bs412_knee);
+	} else init_bs412(&runtime->bs412, config.mpx_deviation, config.mpx_power, config.bs412_attack, config.bs412_release, config.bs412_max, config.bs412_gate, config.bs412_knee, config.sample_rate);
 	init_stereo_encoder(&runtime->stencode, config.stereo_ssb, 4.0f, &runtime->osc, config.volumes.audio, config.volumes.pilot);
 
 	float last_gain = 0.0f;
@@ -560,6 +562,16 @@ static void *handle_client(ipc_client_arg_t *arg) {
 				to_run = 0;
 				to_reload = 1;
 				break;
+			case 110:
+				// Set BS412 gate
+				memcpy(&val, buf + 1, sizeof(float));
+				data->runtime->bs412.knee_db = val;
+				reply = 0;
+				break;
+			case 0xfe:
+				// Fetch config
+        		send(fd, data->config, sizeof(FM95_Config), 0);
+				break;
 			case 0xff:
 				// Fetch data
         		send(fd, data->run_result, sizeof(FM95_RunResult), 0);
@@ -617,6 +629,7 @@ int main(int argc, char **argv) {
 		.bs412_release = 0.025f,
 		.bs412_max = 2.82f,
 		.bs412_gate = -20.0f,
+		.bs412_knee = 4.0f,
 		.lpf_cutoff = 15000.0f,
 	};
 
