@@ -9,10 +9,10 @@ inline float power_to_dbr(float power, float ref) {
     return 10*log10f(power / ref);
 }
 
-void init_bs412(BS412Compressor* comp, uint32_t mpx_deviation, float target_power, float attack, float release, float max_gain, float gate, float knee_db, uint32_t sample_rate) {
+void init_bs412(BS412Compressor* comp, uint32_t mpx_deviation, float target_power, float attack, float release, float max_gain, float gate, float knee_db, float strenght, uint32_t sample_rate) {
 	comp->reference = (19000.0f / mpx_deviation) * (19000.0f / mpx_deviation);
 	comp->avg_power = 0.0f;
-    comp->alpha = 1.0f / (BS412_TIME * sample_rate);
+    comp->alpha = 1.0f - expf(-1.0f / (BS412_TIME * sample_rate));
 	comp->sample_rate = sample_rate;
 	comp->attack = expf(-1.0f / (attack * sample_rate));
 	comp->release = expf(-1.0f / (release * sample_rate));
@@ -25,12 +25,13 @@ void init_bs412(BS412Compressor* comp, uint32_t mpx_deviation, float target_powe
 	comp->gate_threshold = comp->reference * powf(10.0f, gate / 10.0f);
 	comp->knee_db = knee_db; // e.g. 6.0f — width in dB around target on each side
 	comp->init = true;
+	comp->strenght = strenght;
 	#ifdef BS412_DEBUG
 	debug_printf("Initialized MPX power measurement with sample rate: %d\n", sample_rate);
 	#endif
 }
 
-void reinit_bs412(BS412Compressor* comp, uint32_t mpx_deviation, float target_power, float attack, float release, float max_gain, float gate, float knee_db) {
+void reinit_bs412(BS412Compressor* comp, uint32_t mpx_deviation, float target_power, float attack, float release, float max_gain, float gate, float knee_db, float strenght) {
 	comp->reference = (19000.0f / mpx_deviation) * (19000.0f / mpx_deviation);
 	comp->target = comp->reference * powf(10.0f, target_power / 10.0f);
 	comp->target_dbr = power_to_dbr(comp->target, comp->reference);
@@ -39,6 +40,7 @@ void reinit_bs412(BS412Compressor* comp, uint32_t mpx_deviation, float target_po
 	comp->release = expf(-1.0f / (release * comp->sample_rate));
 	comp->max_gain = max_gain;
 	comp->knee_db = knee_db;
+	comp->strenght = strenght;
 }
 
 float bs412_compress(BS412Compressor* comp, float audio, float sample_mpx, float* mpx_power) {
@@ -66,7 +68,7 @@ float bs412_compress(BS412Compressor* comp, float audio, float sample_mpx, float
 	}
 
 	float safe_power = fmaxf(comp->avg_power, 1e-12f);
-	float target_gain = sqrtf(comp->target / safe_power);
+	float target_gain = powf(sqrtf(comp->target / safe_power), comp->strenght);
 
 	float level_dbr = power_to_dbr(comp->avg_power, comp->reference);
 	float half_knee = comp->knee_db * 0.5f;

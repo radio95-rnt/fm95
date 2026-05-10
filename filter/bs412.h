@@ -30,8 +30,9 @@ typedef struct {
 	float gate_threshold;
 	bool init;
 	float knee_db;
+	float strenght;
 } BS412Compressor;
 
-void init_bs412(BS412Compressor *comp, uint32_t mpx_deviation, float target_power, float attack, float release, float max_gain, float gate, float knee_db, uint32_t sample_rate);
-void reinit_bs412(BS412Compressor *comp, uint32_t mpx_deviation, float target_power, float attack, float release, float max_gain, float gate, float knee_db);
+void init_bs412(BS412Compressor *comp, uint32_t mpx_deviation, float target_power, float attack, float release, float max_gain, float gate, float knee_db, float strenght, uint32_t sample_rate);
+void reinit_bs412(BS412Compressor *comp, uint32_t mpx_deviation, float target_power, float attack, float release, float max_gain, float gate, float knee_db, float strenght);
 float bs412_compress(BS412Compressor *comp, float audio, float sample_mpx, float* mpx_power);

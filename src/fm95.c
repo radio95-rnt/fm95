@@ -68,6 +68,7 @@ typedef struct {
 	float bs412_max;
 	float bs412_gate;
 	float bs412_knee;
+	float bs412_strenght;
 	float lpf_cutoff;
 } FM95_Config;
 
@@ -336,6 +337,7 @@ static int config_handler(void* user, const char* section, const char* name, con
 	else if(MATCH("fm95", "bs412_max")) pconfig->bs412_max = strtof(value, NULL);
 	else if(MATCH("fm95", "bs412_gate")) pconfig->bs412_gate = strtof(value, NULL);
 	else if(MATCH("fm95", "bs412_knee")) pconfig->bs412_knee = strtof(value, NULL);
+	else if(MATCH("fm95", "bs412_strenght")) pconfig->bs412_strenght = strtof(value, NULL);
 	else if(MATCH("advanced", "lpf_order")) pconfig->lpf_order = atoi(value);
 	else if(MATCH("advanced", "stereo_ssb")) pconfig->stereo_ssb = atoi(value);
 	else if(MATCH("advanced", "preemp_unity")) pconfig->preemp_unity_freq = strtof(value, NULL);
@@ -446,8 +448,8 @@ void init_runtime(FM95_Runtime* runtime, const FM95_Config config) {
 	}
 
 	if(runtime->bs412.init == true && (runtime->bs412.sample_rate == config.sample_rate)) {
-		reinit_bs412(&runtime->bs412, config.mpx_deviation, config.mpx_power, config.bs412_attack, config.bs412_release, config.bs412_max, config.bs412_gate, config.bs412_knee);
-	} else init_bs412(&runtime->bs412, config.mpx_deviation, config.mpx_power, config.bs412_attack, config.bs412_release, config.bs412_max, config.bs412_gate, config.bs412_knee, config.sample_rate);
+		reinit_bs412(&runtime->bs412, config.mpx_deviation, config.mpx_power, config.bs412_attack, config.bs412_release, config.bs412_max, config.bs412_gate, config.bs412_knee, config.bs412_strenght);
+	} else init_bs412(&runtime->bs412, config.mpx_deviation, config.mpx_power, config.bs412_attack, config.bs412_release, config.bs412_max, config.bs412_gate, config.bs412_knee, config.bs412_strenght, config.sample_rate);
 	init_stereo_encoder(&runtime->stencode, config.stereo_ssb, 4.0f, &runtime->osc, config.volumes.audio, config.volumes.pilot);
 
 	float last_gain = 0.0f;
@@ -563,9 +565,15 @@ static void *handle_client(ipc_client_arg_t *arg) {
 				to_reload = 1;
 				break;
 			case 110:
-				// Set BS412 gate
+				// Set BS412 knee
 				memcpy(&val, buf + 1, sizeof(float));
 				data->runtime->bs412.knee_db = val;
+				reply = 0;
+				break;
+			case 111:
+				// Set BS412 strenght
+				memcpy(&val, buf + 1, sizeof(float));
+				data->runtime->bs412.strenght = val;
 				reply = 0;
 				break;
 			case 0xfe:
@@ -630,6 +638,7 @@ int main(int argc, char **argv) {
 		.bs412_max = 2.82f,
 		.bs412_gate = -20.0f,
 		.bs412_knee = 4.0f,
+		.bs412_strenght = 1.0f,
 		.lpf_cutoff = 15000.0f,
 	};
 
