@@ -68,7 +68,9 @@ float bs412_compress(BS412Compressor* comp, float audio, float sample_mpx, float
 	}
 
 	float safe_power = fmaxf(comp->avg_power, 1e-12f);
-	float target_gain = powf(sqrtf(comp->target / safe_power), comp->strenght);
+	float temp_gain = sqrtf(comp->target / safe_power);
+	float target_gain = powf(temp_gain, comp->strenght);
+	if(isnan(target_gain)) target_gain = temp_gain;
 
 	float level_dbr = power_to_dbr(comp->avg_power, comp->reference);
 	float half_knee = comp->knee_db * 0.5f;
