@@ -109,7 +109,8 @@ static inline bool compare_dvs(const FM95_DeviceNames *a, const FM95_DeviceNames
 }
 
 static float calculate_sharedaudio_volume(const FM95_Volumes volumes, const int rds_streams) {
-	float rds_volume = volumes.rds * powf(volumes.rds_step, rds_streams);
+	float rds_volume = 0.0f;
+	for (int i = 0; i < rds_streams; i++) rds_volume += volumes.rds * powf(volumes.rds_step, i);
 	return 1.0f - rds_volume - volumes.pilot - volumes.headroom;
 }
 
