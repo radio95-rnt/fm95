@@ -1,40 +1,33 @@
 cmake_minimum_required(VERSION 3.10)
 
-project(FMTools LANGUAGES C)
+project(fm95 LANGUAGES C)
 
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_C_STANDARD_REQUIRED YES)
 
-# Set default build type if not specified
 if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Release)
 endif()
 
 file(GLOB SRC_FILES "src/*.c")
 
-# file(GLOB LIB_FILES "lib/*.c")
 file(GLOB FILTER_FILES "filter/*.c")
-file(GLOB MODULATION_FILES "modulation/*.c")
-file(GLOB DSP_FILES "dsp/*.c")
-file(GLOB IO_FILES "io/*.c")
+file(GLOB LIB_FILES "lib/*.c")
 
 file(GLOB INIH_FILES "inih/*.c")
 
 add_library(inih OBJECT ${INIH_FILES})
+target_include_directories(inih PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/inih)
 
-# add_library(libfm OBJECT ${LIB_FILES})
 add_library(libfmfilter OBJECT ${FILTER_FILES})
-add_library(libfmmodulation OBJECT ${MODULATION_FILES})
-add_library(libfmdsp OBJECT ${DSP_FILES})
-add_library(libfmio OBJECT ${IO_FILES})
+add_library(libfm OBJECT ${LIB_FILES})
 
-# Define DEBUG macro for Debug builds on libraries
+target_include_directories(libfmfilter PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include ${CMAKE_CURRENT_SOURCE_DIR}/filter)
+target_include_directories(libfm PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include ${CMAKE_CURRENT_SOURCE_DIR}/lib)
+
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-    # target_compile_definitions(libfm PRIVATE DEBUG=1)
     target_compile_definitions(libfmfilter PRIVATE DEBUG=1)
-    target_compile_definitions(libfmmodulation PRIVATE DEBUG=1)
-    target_compile_definitions(libfmdsp PRIVATE DEBUG=1)
-    target_compile_definitions(libfmio PRIVATE DEBUG=1)
+    target_compile_definitions(libfm PRIVATE DEBUG=1)
 endif()
 
 foreach(SRC_FILE ${SRC_FILES})
@@ -42,15 +35,15 @@ foreach(SRC_FILE ${SRC_FILES})
 
     add_executable(${EXEC_NAME} ${SRC_FILE})
     target_compile_options(${EXEC_NAME} PRIVATE -O2 -Wall -Wextra -Werror -Wno-unused-parameter)
-
+    
     if(EXEC_NAME STREQUAL "fm95")
-        target_link_libraries(${EXEC_NAME} PRIVATE libfmfilter libfmmodulation libfmdsp libfmio pulse pulse-simple m liquid inih pthread)
+        target_link_libraries(${EXEC_NAME} PRIVATE libfmfilter libfm pulse pulse-simple m liquid inih pthread)
     elseif(EXEC_NAME STREQUAL "chimer95")
-        target_link_libraries(${EXEC_NAME} PRIVATE libfmdsp inih m libfmio pulse pulse-simple liquid pthread)
+        target_link_libraries(${EXEC_NAME} PRIVATE libfm inih m libfm pulse pulse-simple liquid pthread)
     elseif(EXEC_NAME STREQUAL "sca95")
-        target_link_libraries(${EXEC_NAME} PRIVATE libfmmodulation inih m libfmio pulse pulse-simple libfmdsp liquid pthread)
+        target_link_libraries(${EXEC_NAME} PRIVATE inih m pulse pulse-simple libfm liquid pthread)
     elseif(EXEC_NAME STREQUAL "vban95")
-        target_link_libraries(${EXEC_NAME} PRIVATE libfmio pulse pulse-simple liquid pthread)
+        target_link_libraries(${EXEC_NAME} PRIVATE libfm pulse pulse-simple liquid pthread)
     else()
         message(FATAL_ERROR "How do I link this? ${EXEC_NAME}")
     endif()

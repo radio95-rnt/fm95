@@ -1,7 +1,7 @@
 #pragma once
 
 #include <math.h>
-#include "../lib/constants.h"
+#include "constants.h"
 
 typedef struct
 {

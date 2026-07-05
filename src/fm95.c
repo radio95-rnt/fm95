@@ -1,6 +1,6 @@
 #include <getopt.h>
 #include <liquid/liquid.h>
-#include "../inih/ini.h"
+#include "ini.h"
 #include <stdbool.h>
 
 #define DEFAULT_INI_PATH "/etc/fm95/fm95.conf"
@@ -8,16 +8,16 @@
 #define buffer_maxlength 99960
 #define buffer_tlength_fragsize 99960
 
-#include "../dsp/oscillator.h"
-#include "../filter/iir.h"
-#include "../modulation/stereo_encoder.h"
-#include "../filter/bs412.h"
-#include "../filter/gain_control.h"
+#include "oscillator.h"
+#include "iir.h"
+#include "stereo_encoder.h"
+#include "bs412.h"
+#include "gain_control.h"
 
 #define BUFFER_SIZE 4998 // This defines how many samples to process at a time, because the loop here is this: get signal -> process signal -> output signal, and when we get signal we actually get BUFFER_SIZE of them
 
-#include "../io/audio.h"
-#include "../io/ipc.h"
+#include "audio.h"
+#include "ipc.h"
 
 static volatile sig_atomic_t to_run = 1;
 static volatile sig_atomic_t to_reload = 0;

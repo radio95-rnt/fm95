@@ -19,7 +19,6 @@
         "stdint.h": "c",
         "asoundlib.h": "c",
         "hilbert.h": "c",
-        "fm_modulator.h": "c",
         "bs412.h": "c",
         "gain_control.h": "c",
         "optimization.h": "c",

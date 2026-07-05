@@ -4,14 +4,14 @@
 #include <signal.h>
 #include <string.h>
 #include <stdbool.h>
-#include "../inih/ini.h"
+#include "ini.h"
 
 #define DEFAULT_CONFIG_PATH "/etc/chimer95.conf"
 #define buffer_maxlength 2048
 #define buffer_tlength_fragsize 2048
 #define buffer_prebuf 0
 
-#include "../dsp/oscillator.h"
+#include "oscillator.h"
 
 #define DEFAULT_FREQ 1000.0f
 #define DEFAULT_SAMPLE_RATE 8000
@@ -20,7 +20,7 @@
 
 #define BUFFER_SIZE 1024
 
-#include "../io/audio.h"
+#include "audio.h"
 
 #define DEFAULT_MASTER_VOLUME 0.5f
 #define DEFAULT_OFFSET 0

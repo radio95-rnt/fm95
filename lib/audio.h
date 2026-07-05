@@ -10,7 +10,7 @@
 #define PULSE_DEBUG
 #endif
 #ifdef PULSE_DEBUG
-#include "../lib/debug.h"
+#include "debug.h"
 #endif
 
 typedef struct
@@ -22,7 +22,7 @@ typedef struct
 	char* stream_name;
 	char* device;
 	bool initialized;
-	bool direction; // 0 = output, 1 - input
+	bool input;
 } PulseDevice;
 
 typedef PulseDevice PulseInputDevice;

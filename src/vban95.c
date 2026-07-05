@@ -10,9 +10,9 @@
 #define buffer_tlength_fragsize 12288
 #define buffer_prebuf 64
 
-#include "../io/audio.h"
-#include "../lib/debug.h"
-#include "../lib/vban.h"
+#include "audio.h"
+#include "debug.h"
+#include "vban.h"
 
 #define BUF_SIZE 1500
 #define MAX_AUDIO_DATA_SIZE (BUF_SIZE - sizeof(VBANHeader))

@@ -1,10 +1,10 @@
 #pragma once
 
 #include <stdint.h>
-#include "../dsp/oscillator.h"
+#include "oscillator.h"
 #include <liquid/liquid.h>
 #include <complex.h>
-#include "../dsp/delay.h"
+#include "delay.h"
 
 typedef struct
 {

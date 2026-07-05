@@ -9,7 +9,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #ifdef BS412_DEBUG
-#include "../lib/debug.h"
+#include "debug.h"
 #endif
 
 typedef struct {

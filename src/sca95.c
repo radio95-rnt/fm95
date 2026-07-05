@@ -9,7 +9,7 @@
 #define DEFAULT_DEVIATION 7000.0f
 #define DEFAULT_CLIPPER_THRESHOLD 1.0f
 
-#include "../modulation/fm_modulator.h"
+#include "oscillator.h"
 
 #define DEFAULT_SAMPLE_RATE 192000
 
@@ -18,7 +18,7 @@
 
 #define BUFFER_SIZE 2048
 
-#include "../io/audio.h"
+#include "audio.h"
 
 #define DEFAULT_AUDIO_VOLUME 1.0f // Audio volume, before clipper
 
@@ -68,6 +68,27 @@ void show_help(char *name) {
 		,DEFAULT_VOLUME
 		,DEFAULT_AUDIO_VOLUME
 	);
+}
+
+typedef struct {
+	float frequency;
+	float deviation;
+	float osc_phase;
+	float sample_rate;
+} FMModulator;
+
+void init_fm_modulator(FMModulator *fm, float frequency, float deviation, float sample_rate) {
+	fm->frequency = frequency;
+	fm->deviation = deviation;
+	fm->sample_rate = sample_rate;
+	fm->osc_phase = 0.0f;
+}
+
+float modulate_fm(FMModulator *fm, float sample) {
+	float inst_freq = fm->frequency+(sample*fm->deviation);
+	fm->osc_phase += (M_2PI * inst_freq) / fm->sample_rate;
+	fm->osc_phase -= (fm->osc_phase >= M_2PI) ? M_2PI : 0.0f;
+	return sinf(fm->osc_phase);
 }
 
 int run_sca95(const Sca95_Config config, Sca95_Runtime* runtime) {
