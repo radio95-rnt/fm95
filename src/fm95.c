@@ -442,7 +442,7 @@ void init_runtime(FM95_Runtime* runtime, const FM95_Config config) {
 		runtime->rds_symbol[i] = -1.0f;
 		runtime->rds_last_bit[i] = 0;
 
-		runtime->rds_filter[i] = iirfilt_rrrf_create_prototype(LIQUID_IIRDES_BUTTER, LIQUID_IIRDES_LOWPASS, LIQUID_IIRDES_SOS, 6, (2400.0f/config.sample_rate), 0.0f, 1.0f, 30.0f);
+		runtime->rds_filter[i] = iirfilt_rrrf_create_prototype(LIQUID_IIRDES_CHEBY2, LIQUID_IIRDES_LOWPASS, LIQUID_IIRDES_SOS, 5, (2400.0f/config.sample_rate), 0.0f, 1.0f, 30.0f);
 
 		if(config.stereo_ssb) init_delay_line(&runtime->rds_delays[i], config.stereo_ssb*2);
 	}
