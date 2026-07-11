@@ -85,6 +85,7 @@ typedef struct {
 	bit_ring_t rds_bitring[4];
 	float rds_symbol[4];
 	uint8_t rds_last_bit[4];
+	firfilt_rrrf rds_filter[4];
 } FM95_Runtime;
 
 typedef struct {
@@ -145,6 +146,7 @@ void cleanup_runtime(FM95_Runtime* runtime, const FM95_Config config) {
 	} exit_stereo_encoder(&runtime->stencode);
 
 	for(int i = 0; i < 4; i++) free(runtime->rds_bitring[i].bits);
+	for(int i = 0; i < 4; i++) iirfilt_rrrf_destroy(runtime->rds_filter[i]);
 }
 
 void cleanup_audio_runtime(FM95_Runtime *rt, const FM95_Options options) {
@@ -253,10 +255,13 @@ int run_fm95(FM95_Config* config, FM95_Runtime* runtime, FM95_RunResult* result)
 
 					uint8_t osc_stream = 12 + stream;
 					if(osc_stream >= 13) osc_stream++;
+					
+					float shaped = 0.0f;
+					iirfilt_rrrf_execute(runtime->rds_filter[stream], runtime->rds_symbol[stream] * clock, &shaped);
 
 					float carrier = get_oscillator_cos_multiplier_ni(&runtime->osc, osc_stream * 4.0f);
 					if(config->stereo_ssb) carrier = delay_line(&runtime->rds_delays[stream], carrier);
-					mpx += runtime->rds_symbol[stream] * clock * carrier * rds_level;
+					mpx += shaped * carrier * rds_level;
 					rds_level *= config->volumes.rds_step; // Prepare level for the next stream
 				}
 			}
@@ -446,6 +451,8 @@ void init_runtime(FM95_Runtime* runtime, const FM95_Config config) {
 		bit_ring_init(&runtime->rds_bitring[i], 4096);
 		runtime->rds_symbol[i] = -1.0f;
 		runtime->rds_last_bit[i] = 0;
+
+		runtime->rds_filter[i] = iirfilt_rrrf_create_prototype(LIQUID_IIRDES_CHEBY2, LIQUID_IIRDES_LOWPASS, LIQUID_IIRDES_SOS, 8, (4750/config.sample_rate), 0.0f, 1.0f, 40.0f);
 	}
 }
 
