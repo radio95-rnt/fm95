@@ -3,7 +3,7 @@
 #include <stdlib.h>
 
 typedef struct {
-    uint8_t *bits;      // one bit stored per byte (0/1) — throughput is tiny, simplicity wins
+    uint8_t *bits;
     size_t capacity;
     _Atomic size_t head, tail;
 } bit_ring_t;
