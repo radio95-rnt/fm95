@@ -586,7 +586,7 @@ static void *handle_client(ipc_client_arg_t *arg) {
 				// Set RDS streams
 				memcpy(&bval, buf + 1, 1);
 				data->config->rds_streams = bval;
-				data->config->volumes.audio = calculate_sharedaudio_volume(config.volumes, config.rds_streams);
+				data->config->volumes.audio = calculate_sharedaudio_volume(data->config->volumes, bval);
 				reply = 0;
 				break;
 			case 0xfe:
