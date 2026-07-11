@@ -12,6 +12,7 @@
 #define JDSCA_BUFFER_BITS      40000     // bit_ring capacity
 #define JDSCA_SUBCARRIER_MULT  64.0f     // 64 * 1187.5 Hz = 76 kHz
 #define JDSCA_LEVEL            0.045f    // injection level, tune by ear/scope
+#include "qpsk.h"
 #endif
 
 #define DEFAULT_INI_PATH "/etc/fm95/fm95.conf"
