@@ -1,3 +1,5 @@
+#pragma once
+
 #include <pulse/simple.h>
 
 #define VBAN_SR_MAXNUMBER 21

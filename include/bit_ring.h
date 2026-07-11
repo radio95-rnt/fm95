@@ -1,4 +1,5 @@
-// bit_ring.h
+#pragma once
+
 #include <stdatomic.h>
 #include <stdlib.h>
 
