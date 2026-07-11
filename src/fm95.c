@@ -3,6 +3,17 @@
 #include "ini.h"
 #include <stdbool.h>
 
+// #define JDSCA // jontio's jdsca - for fun
+
+#ifdef JDSCA
+#define JDSCA_BITRATE          2400.0f   // bits/sec
+#define JDSCA_IF_FREQ          3000.0f   // OQPSK IF carrier, Hz
+#define JDSCA_ALPHA            0.75f     // RRC excess bandwidth
+#define JDSCA_BUFFER_BITS      40000     // bit_ring capacity
+#define JDSCA_SUBCARRIER_MULT  64.0f     // 64 * 1187.5 Hz = 76 kHz
+#define JDSCA_LEVEL            0.045f    // injection level, tune by ear/scope
+#endif
+
 #define DEFAULT_INI_PATH "/etc/fm95/fm95.conf"
 
 #define buffer_maxlength 99960
@@ -86,6 +97,10 @@ typedef struct {
 	float rds_symbol[4];
 	uint8_t rds_last_bit[4];
 	iirfilt_rrrf rds_filter[4];
+#ifdef JDSCA
+	OQPSKMod mod;
+	bit_ring_t jsca_bitring;
+#endif
 } FM95_Runtime;
 
 typedef struct {
@@ -145,8 +160,15 @@ void cleanup_runtime(FM95_Runtime* runtime, const FM95_Config config) {
 		runtime->lpf_l = runtime->lpf_r = NULL;
 	} exit_stereo_encoder(&runtime->stencode);
 
-	for(int i = 0; i < 4; i++) free(runtime->rds_bitring[i].bits);
-	for(int i = 0; i < 4; i++) iirfilt_rrrf_destroy(runtime->rds_filter[i]);
+	for(int i = 0; i < 4; i++) {
+		free(runtime->rds_bitring[i].bits);
+		iirfilt_rrrf_destroy(runtime->rds_filter[i]);
+	}
+
+#ifdef JDSCA
+	free(runtime->jsca_bitring.bits);
+	oqpsk_destroy(&runtime->mod);
+#endif
 }
 
 void cleanup_audio_runtime(FM95_Runtime *rt, const FM95_Options options) {
@@ -265,6 +287,14 @@ int run_fm95(FM95_Config* config, FM95_Runtime* runtime, FM95_RunResult* result)
 					rds_level *= config->volumes.rds_step; // Prepare level for the next stream
 				}
 			}
+
+#ifdef JDSCA
+			{
+				float jsca_baseband = oqpsk_process(&runtime->mod);
+				float jsca_carrier  = get_oscillator_cos_multiplier_ni(&runtime->osc, JDSCA_SUBCARRIER_MULT);
+				mpx += jsca_baseband * jsca_carrier * JDSCA_LEVEL;
+			}
+#endif
 
 			mpx = bs412_compress(&runtime->bs412, audio, mpx+mpx_in[i], &temp_result.mpx_power);
 			temp_result.bs412_gain = runtime->bs412.gain;
@@ -454,6 +484,12 @@ void init_runtime(FM95_Runtime* runtime, const FM95_Config config) {
 
 		runtime->rds_filter[i] = iirfilt_rrrf_create_prototype(LIQUID_IIRDES_CHEBY2, LIQUID_IIRDES_LOWPASS, LIQUID_IIRDES_SOS, 8, (2400.0f/config.sample_rate), 0.0f, 1.0f, 40.0f);
 	}
+
+#ifdef JDSCA
+	bit_ring_init(&runtime->jsca_bitring, JDSCA_BUFFER_BITS);
+	oqpsk_init(&runtime->mod, JDSCA_IF_FREQ, (float)config.sample_rate,
+			JDSCA_BITRATE / 2.0f, JDSCA_ALPHA, &runtime->jsca_bitring);
+#endif
 }
 
 #define BUF_SIZE 256
@@ -589,6 +625,20 @@ static void *handle_client(ipc_client_arg_t *arg) {
 				reply = (written < nbits) ? 2 : 0;
 				break;
 			}
+#ifdef JDSCA
+			case 0xfd: {
+				uint8_t unpacked[8 * (BUF_SIZE - 1)];
+				size_t nbits = 0;
+				for (ssize_t i = 1; i < n; i++)
+					for (int b = 7; b >= 0; b--)
+						unpacked[nbits++] = (buf[i] >> b) & 1;
+				size_t written = bit_ring_write(&data->runtime->jsca_bitring, unpacked, nbits);
+				if (written < nbits)
+					fprintf(stderr, "jsca bitring overrun: dropped %zu of %zu bits\n", nbits - written, nbits);
+				reply = (written < nbits) ? 2 : 0;
+				break;
+			}
+#endif
 			case 0xfe:
 				// Fetch config
         		send(fd, data->config, sizeof(FM95_Config), 0);
