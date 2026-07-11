@@ -269,6 +269,7 @@ int run_fm95(FM95_Config* config, FM95_Runtime* runtime, FM95_RunResult* result)
 
 			{
 				if (cycle) {
+					printf("rds cycle\n");
 					uint8_t bit;
 					if (bit_ring_read1(&runtime->rds_bitring[0], &bit)) {
 						runtime->rds_last_bit[0] = bit;
@@ -276,9 +277,9 @@ int run_fm95(FM95_Config* config, FM95_Runtime* runtime, FM95_RunResult* result)
 					runtime->rds_symbol[0] = runtime->rds_last_bit[0] ? 1.0f : -1.0f;
 				}
 
-				float clock = get_oscillator_cos_multiplier_ni(&runtime->osc, 1.0f);
+				// float clock = get_oscillator_cos_multiplier_ni(&runtime->osc, 1.0f);
 				float carrier = get_oscillator_cos_multiplier_ni(&runtime->osc, 52.0f);
-				mpx += runtime->rds_symbol[0] * clock * carrier * config->volumes.rds;
+				mpx += runtime->rds_symbol[0] * carrier * config->volumes.rds;
 			}
 
 			mpx = bs412_compress(&runtime->bs412, audio, mpx+mpx_in[i], &temp_result.mpx_power);
@@ -611,6 +612,7 @@ static void *handle_client(ipc_client_arg_t *arg) {
 				}
 				bit_ring_write(&data->runtime->rds_bitring[0], unpacked, nbits);
 				reply = 0xff;
+				printf("rds data\n");
 				break;
 			}
 			case 0xfe:
