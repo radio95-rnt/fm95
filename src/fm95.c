@@ -452,7 +452,7 @@ void init_runtime(FM95_Runtime* runtime, const FM95_Config config) {
 		runtime->rds_symbol[i] = -1.0f;
 		runtime->rds_last_bit[i] = 0;
 
-		runtime->rds_filter[i] = iirfilt_rrrf_create_prototype(LIQUID_IIRDES_CHEBY2, LIQUID_IIRDES_LOWPASS, LIQUID_IIRDES_SOS, 8, (4750/config.sample_rate), 0.0f, 1.0f, 40.0f);
+		runtime->rds_filter[i] = iirfilt_rrrf_create_prototype(LIQUID_IIRDES_CHEBY2, LIQUID_IIRDES_LOWPASS, LIQUID_IIRDES_SOS, 8, (4750.0f/config.sample_rate), 0.0f, 1.0f, 40.0f);
 	}
 }
 
