@@ -6,8 +6,7 @@
 #include <pthread.h>
 #include <sys/un.h>
 
-static int make_server_socket(const char *path)
-{
+static int make_server_socket(const char *path) {
     int fd = socket(AF_UNIX, SOCK_STREAM, 0);
     if (fd < 0) { perror("ipc: socket"); return -1; }
 
@@ -63,13 +62,11 @@ static void *listener_thread(void *arg) {
     return NULL;
 }
 
-int create_ipc(ipc_ctx_t *ctx, ipc_client_fn handler,
-               const char *socket_path, void *user_data)
-{
-    ctx->handler     = handler;
-    ctx->user_data   = user_data;
-    ctx->running     = 1;
-    ctx->server_fd   = make_server_socket(socket_path);
+int create_ipc(ipc_ctx_t *ctx, ipc_client_fn handler, const char *socket_path, void *user_data) {
+    ctx->handler = handler;
+    ctx->user_data = user_data;
+    ctx->running = 1;
+    ctx->server_fd = make_server_socket(socket_path);
     ctx->socket_path = strdup(socket_path);
     if (ctx->server_fd < 0) return -1;
 

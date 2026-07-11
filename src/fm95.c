@@ -13,6 +13,7 @@
 #include "stereo_encoder.h"
 #include "bs412.h"
 #include "gain_control.h"
+#include "bit_ring.h"
 
 #define BUFFER_SIZE 4998 // This defines how many samples to process at a time, because the loop here is this: get signal -> process signal -> output signal, and when we get signal we actually get BUFFER_SIZE of them
 
@@ -83,6 +84,10 @@ typedef struct {
 	StereoEncoder stencode;
 	AGC agc;
 	delay_line_t rds_delays[4];
+	bit_ring_t rds_bitring[1];
+	double rds_phase[1];
+	float  rds_symbol[1];
+	uint8_t rds_last_bit[1];
 } FM95_Runtime;
 
 typedef struct {
@@ -142,6 +147,8 @@ void cleanup_runtime(FM95_Runtime* runtime, const FM95_Config config) {
 		if(runtime->lpf_r != NULL) iirfilt_rrrf_destroy(runtime->lpf_r);
 		runtime->lpf_l = runtime->lpf_r = NULL;
 	} exit_stereo_encoder(&runtime->stencode);
+
+	free(runtime->rds_bitring[0].bits);
 }
 
 void cleanup_audio_runtime(FM95_Runtime *rt, const FM95_Options options) {
@@ -208,6 +215,7 @@ int run_fm95(FM95_Config* config, FM95_Runtime* runtime, FM95_RunResult* result)
 		}
 
 		for(uint16_t i = 0; i < BUFFER_SIZE; i++) {
+			bool cycle = advance_oscillator(&runtime->osc);
 			bool do_result = (i == BUFFER_SIZE - 1);
 
 			float mpx = 0.0f;
@@ -251,7 +259,7 @@ int run_fm95(FM95_Config* config, FM95_Runtime* runtime, FM95_RunResult* result)
 					uint8_t osc_stream = 12 + stream;
 					if(osc_stream >= 13) osc_stream++;
 
-					float carrier = get_oscillator_cos_multiplier_ni(&runtime->osc, osc_stream);
+					float carrier = get_oscillator_cos_multiplier_ni(&runtime->osc, osc_stream * 4.0f);
 					if(config->stereo_ssb) carrier = delay_line(&runtime->rds_delays[stream], carrier);
 					mpx += (runtime->rds_in[config->rds_streams * i + stream] * carrier) * rds_level;
 
@@ -259,12 +267,24 @@ int run_fm95(FM95_Config* config, FM95_Runtime* runtime, FM95_RunResult* result)
 				}
 			}
 
+			{
+				if (cycle) {
+					uint8_t bit;
+					if (bit_ring_read1(&runtime->rds_bitring[0], &bit)) {
+						runtime->rds_last_bit[0] = bit;
+					}
+					runtime->rds_symbol[0] = runtime->rds_last_bit[0] ? 1.0f : -1.0f;
+				}
+
+				float clock = get_oscillator_cos_multiplier_ni(&runtime->osc, 1.0f);
+				float carrier = get_oscillator_cos_multiplier_ni(&runtime->osc, 52.0f);
+				mpx += runtime->rds_symbol[0] * clock * carrier * config->volumes.rds;
+			}
+
 			mpx = bs412_compress(&runtime->bs412, audio, mpx+mpx_in[i], &temp_result.mpx_power);
 			temp_result.bs412_gain = runtime->bs412.gain;
-			mpx = tanhf(mpx);
 
-			output[i] = mpx*config->master_volume; // Ensure peak deviation of 75 khz (or the set deviation), assuming we're calibrated correctly
-			advance_oscillator(&runtime->osc);
+			output[i] = tanhf(mpx)*config->master_volume; // Ensure peak deviation of 75 khz (or the set deviation), assuming we're calibrated correctly
 		} memcpy(result, &temp_result, sizeof(FM95_RunResult));
 		_pulse_output;
 	}
@@ -432,7 +452,7 @@ void init_runtime(FM95_Runtime* runtime, const FM95_Config config) {
 		init_oscillator(&runtime->osc, (config.calibration == 2) ? 60 : ((config.calibration == 1) ? 400 : 19000), config.sample_rate);
 		return;
 	}
-	else init_oscillator(&runtime->osc, 4750, config.sample_rate);
+	else init_oscillator(&runtime->osc, 1187.5f, config.sample_rate);
 
 	if(config.lpf_cutoff != 0) {
 		runtime->lpf_l = iirfilt_rrrf_create_prototype(LIQUID_IIRDES_CHEBY2, LIQUID_IIRDES_LOWPASS, LIQUID_IIRDES_SOS, config.lpf_order, (config.lpf_cutoff/config.sample_rate), 0.0f, 1.0f, 40.0f);
@@ -451,7 +471,7 @@ void init_runtime(FM95_Runtime* runtime, const FM95_Config config) {
 	if(runtime->bs412.init == true && (runtime->bs412.sample_rate == config.sample_rate)) {
 		reinit_bs412(&runtime->bs412, config.mpx_deviation, config.mpx_power, config.bs412_attack, config.bs412_release, config.bs412_max, config.bs412_gate, config.bs412_knee, config.bs412_strenght);
 	} else init_bs412(&runtime->bs412, config.mpx_deviation, config.mpx_power, config.bs412_attack, config.bs412_release, config.bs412_max, config.bs412_gate, config.bs412_knee, config.bs412_strenght, config.sample_rate);
-	init_stereo_encoder(&runtime->stencode, config.stereo_ssb, 4.0f, &runtime->osc, config.volumes.audio, config.volumes.pilot);
+	init_stereo_encoder(&runtime->stencode, config.stereo_ssb, 16.0f, &runtime->osc, config.volumes.audio, config.volumes.pilot);
 
 	float last_gain = 0.0f;
 	if(config.agc_max != 0.0) {
@@ -460,6 +480,11 @@ void init_runtime(FM95_Runtime* runtime, const FM95_Config config) {
 		initAGC(&runtime->agc, config.sample_rate, config.agc_target, config.agc_min, config.agc_max, config.agc_attack, config.agc_release);
 		runtime->agc.currentGain = last_gain;
 	}
+
+	bit_ring_init(&runtime->rds_bitring[0], 2048);
+	runtime->rds_phase[0] = 0.0;
+	runtime->rds_symbol[0] = -1.0f;
+	runtime->rds_last_bit[0] = 0;
 }
 
 #define BUF_SIZE 256
@@ -577,6 +602,17 @@ static void *handle_client(ipc_client_arg_t *arg) {
 				data->runtime->bs412.strenght = val;
 				reply = 0;
 				break;
+			case 112: {
+				uint8_t unpacked[8 * (BUF_SIZE - 1)];
+				size_t nbits = 0;
+				for (ssize_t i = 1; i < n; i++) {
+					for (int b = 7; b >= 0; b--)
+						unpacked[nbits++] = (buf[i] >> b) & 1;
+				}
+				bit_ring_write(&data->runtime->rds_bitring[0], unpacked, nbits);
+				reply = 0xff;
+				break;
+			}
 			case 0xfe:
 				// Fetch config
         		send(fd, data->config, sizeof(FM95_Config), 0);
