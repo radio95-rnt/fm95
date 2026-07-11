@@ -85,7 +85,7 @@ typedef struct {
 	bit_ring_t rds_bitring[4];
 	float rds_symbol[4];
 	uint8_t rds_last_bit[4];
-	firfilt_rrrf rds_filter[4];
+	iirfilt_rrrf rds_filter[4];
 } FM95_Runtime;
 
 typedef struct {
