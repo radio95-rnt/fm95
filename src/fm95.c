@@ -269,7 +269,6 @@ int run_fm95(FM95_Config* config, FM95_Runtime* runtime, FM95_RunResult* result)
 
 			{
 				if (cycle) {
-					printf("rds cycle\n");
 					uint8_t bit;
 					if (bit_ring_read1(&runtime->rds_bitring[0], &bit)) {
 						runtime->rds_last_bit[0] = bit;
