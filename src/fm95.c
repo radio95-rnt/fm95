@@ -148,6 +148,7 @@ void cleanup_runtime(FM95_Runtime* runtime, const FM95_Config config) {
 	for(int i = 0; i < 4; i++) {
 		free(runtime->rds_bitring[i].bits);
 		iirfilt_rrrf_destroy(runtime->rds_filter[i]);
+		if(config.stereo_ssb) exit_delay_line(runtime->rds_delays[i]);
 	}
 }
 
@@ -249,9 +250,7 @@ int run_fm95(FM95_Config* config, FM95_Runtime* runtime, FM95_RunResult* result)
 				for(uint8_t stream = 0; stream < config->rds_streams; stream++) {
 					if (cycle) {
 						uint8_t bit;
-						if (bit_ring_read1(&runtime->rds_bitring[stream], &bit)) {
-							runtime->rds_last_bit[stream] = bit;
-						}
+						if (bit_ring_read1(&runtime->rds_bitring[stream], &bit)) runtime->rds_last_bit[stream] = bit;
 						runtime->rds_symbol[stream] = runtime->rds_last_bit[stream] ? 1.0f : -1.0f;
 					}
 
@@ -319,12 +318,6 @@ static int config_handler(void* user, const char* section, const char* name, con
     } else if (MATCH("devices", "mpx")) {
         strncpy(dv->mpx, value, 63);
         dv->mpx[63] = '\0';
-    } else if (MATCH("fm95", "rds_streams")) {
-        pconfig->rds_streams = atoi(value);
-        if(pconfig->rds_streams > 4) {
-            printf("RDS Streams more than 4? Nuh uh\n");
-            return 0;
-        }
 	} else if (MATCH("fm95", "preemphasis")) pconfig->preemphasis = atoi(value);
     else if (MATCH("fm95", "calibration")) pconfig->calibration = atoi(value);
     else if (MATCH("fm95", "mpx_power")) pconfig->mpx_power = strtof(value, NULL);
@@ -359,7 +352,6 @@ static int config_handler(void* user, const char* section, const char* name, con
 	else if(MATCH("volumes", "pilot")) pconfig->volumes.pilot = strtof(value, NULL);
 	else if(MATCH("volumes", "rds")) pconfig->volumes.rds = strtof(value, NULL);
 	else if(MATCH("volumes", "rds_step")) pconfig->volumes.rds_step = strtof(value, NULL);
-	else return 0; // Unknown section/name
 
     return 1;
 }
@@ -427,10 +419,6 @@ void init_runtime(FM95_Runtime* runtime, const FM95_Config config) {
 		runtime->lpf_r = iirfilt_rrrf_create_prototype(LIQUID_IIRDES_CHEBY2, LIQUID_IIRDES_LOWPASS, LIQUID_IIRDES_SOS, config.lpf_order, (config.lpf_cutoff/config.sample_rate), 0.0f, 1.0f, 40.0f);
 	}
 
-	if(config.stereo_ssb) {
-		for(int i = 0; i < config.rds_streams; i++) init_delay_line(&runtime->rds_delays[i], config.stereo_ssb*2);
-	}
-
 	if(config.preemphasis != 0) {
 		init_preemphasis(&runtime->preemp_l, (float)config.preemphasis * 1.0e-6f, config.sample_rate, config.preemp_unity_freq);
 		init_preemphasis(&runtime->preemp_r, (float)config.preemphasis * 1.0e-6f, config.sample_rate, config.preemp_unity_freq);
@@ -454,7 +442,9 @@ void init_runtime(FM95_Runtime* runtime, const FM95_Config config) {
 		runtime->rds_symbol[i] = -1.0f;
 		runtime->rds_last_bit[i] = 0;
 
-		runtime->rds_filter[i] = iirfilt_rrrf_create_prototype(LIQUID_IIRDES_CHEBY2, LIQUID_IIRDES_LOWPASS, LIQUID_IIRDES_SOS, 8, (2400.0f/config.sample_rate), 0.0f, 1.0f, 40.0f);
+		runtime->rds_filter[i] = iirfilt_rrrf_create_prototype(LIQUID_IIRDES_BUTTER, LIQUID_IIRDES_LOWPASS, LIQUID_IIRDES_SOS, 6, (2400.0f/config.sample_rate), 0.0f, 1.0f, 30.0f);
+
+		if(config.stereo_ssb) init_delay_line(&runtime->rds_delays[i], config.stereo_ssb*2);
 	}
 }
 
@@ -475,6 +465,7 @@ static void *handle_client(ipc_client_arg_t *arg) {
 	char reply = 0;
     ssize_t n;
 	float val;
+	uint8_t bval;
 
     while ((n = recv(fd, buf, sizeof(buf) - 1, 0)) > 0) {
 		reply = 0xff;
@@ -591,6 +582,13 @@ static void *handle_client(ipc_client_arg_t *arg) {
 				reply = (written < nbits) ? 2 : 0;
 				break;
 			}
+			case 113:
+				// Set RDS streams
+				memcpy(&bval, buf + 1, 1);
+				data->config->rds_streams = bval;
+				config.volumes.audio = calculate_sharedaudio_volume(config.volumes, config.rds_streams);
+				reply = 0;
+				break;
 			case 0xfe:
 				// Fetch config
         		send(fd, data->config, sizeof(FM95_Config), 0);
@@ -613,7 +611,7 @@ static void *handle_client(ipc_client_arg_t *arg) {
 }
 
 int main(int argc, char **argv) {
-	printf("fm95 (an FM Processor by radio95) version 2.6\n");
+	printf("fm95 (an FM Processor by radio95)\n");
 
 	FM95_Config config = {
 		.volumes = {
@@ -627,7 +625,7 @@ int main(int argc, char **argv) {
 		.stereo = 1,
 		.stereo_ssb = 0,
 
-		.rds_streams = 1, // You have to match this with RDS95, otherwise may god have mercy on your RDS decoders
+		.rds_streams = 0,
 
 		.preemphasis = 50, // Europe, the "freedomers" use 75µs
 		.calibration = 0, // Off
