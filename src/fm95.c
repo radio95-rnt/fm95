@@ -148,7 +148,7 @@ void cleanup_runtime(FM95_Runtime* runtime, const FM95_Config config) {
 	for(int i = 0; i < 4; i++) {
 		free(runtime->rds_bitring[i].bits);
 		iirfilt_rrrf_destroy(runtime->rds_filter[i]);
-		if(config.stereo_ssb) exit_delay_line(runtime->rds_delays[i]);
+		if(config.stereo_ssb) exit_delay_line(&runtime->rds_delays[i]);
 	}
 }
 
