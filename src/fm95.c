@@ -31,7 +31,6 @@ typedef struct {
 	float headroom;
 	float pilot;
 	float rds;
-	float rds_step;
 	float drive;
 	float makeup;
 } FM95_Volumes;
@@ -111,9 +110,7 @@ static inline bool compare_dvs(const FM95_DeviceNames *a, const FM95_DeviceNames
 }
 
 static float calculate_sharedaudio_volume(const FM95_Volumes volumes, const int rds_streams) {
-	float rds_volume = 0.0f;
-	for (int i = 0; i < rds_streams; i++) rds_volume += volumes.rds * powf(volumes.rds_step, i);
-	return 1.0f - rds_volume - volumes.pilot - volumes.headroom;
+	return 1.0f - (volumes.rds * rds_streams) - volumes.pilot - volumes.headroom;
 }
 
 static void stop(int signum) {
@@ -206,7 +203,8 @@ int run_fm95(FM95_Config* config, FM95_Runtime* runtime, FM95_RunResult* result)
 		}
 
 		for(uint16_t i = 0; i < BUFFER_SIZE; i++) {
-			bool cycle = advance_oscillator(&runtime->osc);
+			advance_oscillator(&runtime->osc);
+			
 			bool do_result = (i == BUFFER_SIZE - 1);
 
 			float mpx = 0.0f;
@@ -245,25 +243,26 @@ int run_fm95(FM95_Config* config, FM95_Runtime* runtime, FM95_RunResult* result)
 			mpx = stereo_encode(&runtime->stencode, config->stereo, mod_l, mod_r, &audio);
 
 			{
-				float rds_level = config->volumes.rds;
+				static const float stream_shift[4] = {0.0f, (float)M_PI, (float)M_PI_2, (float)(3.0 * M_PI_2)};
+				static float prev_shifted_phase[4] = {0.0f, (float)M_PI, (float)M_PI_2, (float)(3.0 * M_PI_2)};
+
 				float clock = get_oscillator_cos_multiplier_ni(&runtime->osc, 1.0f);
-				for(uint8_t stream = 0; stream < config->rds_streams; stream++) {
-					if (cycle) {
+				for (uint8_t stream = 0; stream < config->rds_streams; stream++) {
+					if (oscillator_did_cycle(&runtime->osc, stream_shift[stream], &prev_shifted_phase[stream])) {
 						uint8_t bit;
 						if (bit_ring_read1(&runtime->rds_bitring[stream], &bit)) runtime->rds_last_bit[stream] = bit;
 						runtime->rds_symbol[stream] = runtime->rds_last_bit[stream] ? 1.0f : -1.0f;
 					}
 
 					uint8_t osc_stream = 12 + stream;
-					if(osc_stream >= 13) osc_stream++;
-					
+					if (osc_stream >= 13) osc_stream++;
+
 					float shaped = 0.0f;
 					iirfilt_rrrf_execute(runtime->rds_filter[stream], runtime->rds_symbol[stream], &shaped);
 
 					float carrier = get_oscillator_cos_multiplier_ni(&runtime->osc, osc_stream * 4.0f);
-					if(config->stereo_ssb) carrier = delay_line(&runtime->rds_delays[stream], carrier);
-					mpx += clock * shaped * carrier * rds_level;
-					rds_level *= config->volumes.rds_step; // Prepare level for the next stream
+					if (config->stereo_ssb) carrier = delay_line(&runtime->rds_delays[stream], carrier);
+					mpx += clock * shaped * carrier * config->volumes.rds;
 				}
 			}
 
@@ -351,7 +350,6 @@ static int config_handler(void* user, const char* section, const char* name, con
 	else if(MATCH("advanced", "makeup")) pconfig->volumes.makeup = strtof(value, NULL);
 	else if(MATCH("volumes", "pilot")) pconfig->volumes.pilot = strtof(value, NULL);
 	else if(MATCH("volumes", "rds")) pconfig->volumes.rds = strtof(value, NULL);
-	else if(MATCH("volumes", "rds_step")) pconfig->volumes.rds_step = strtof(value, NULL);
 
     return 1;
 }
@@ -619,7 +617,6 @@ int main(int argc, char **argv) {
 		.volumes = {
 			.pilot = 0.09f,
 			.rds = 0.045f,
-			.rds_step = 0.9f,
 			.headroom = 0.05f,
 			.drive = 1.0f,
 			.makeup = 1.0f
