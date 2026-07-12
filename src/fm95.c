@@ -258,11 +258,11 @@ int run_fm95(FM95_Config* config, FM95_Runtime* runtime, FM95_RunResult* result)
 					if(osc_stream >= 13) osc_stream++;
 					
 					float shaped = 0.0f;
-					iirfilt_rrrf_execute(runtime->rds_filter[stream], runtime->rds_symbol[stream] * clock, &shaped);
+					iirfilt_rrrf_execute(runtime->rds_filter[stream], runtime->rds_symbol[stream], &shaped);
 
 					float carrier = get_oscillator_cos_multiplier_ni(&runtime->osc, osc_stream * 4.0f);
 					if(config->stereo_ssb) carrier = delay_line(&runtime->rds_delays[stream], carrier);
-					mpx += shaped * carrier * rds_level;
+					mpx += clock * shaped * carrier * rds_level;
 					rds_level *= config->volumes.rds_step; // Prepare level for the next stream
 				}
 			}
@@ -442,7 +442,7 @@ void init_runtime(FM95_Runtime* runtime, const FM95_Config config) {
 		runtime->rds_symbol[i] = -1.0f;
 		runtime->rds_last_bit[i] = 0;
 
-		runtime->rds_filter[i] = iirfilt_rrrf_create_prototype(LIQUID_IIRDES_BUTTER, LIQUID_IIRDES_LOWPASS, LIQUID_IIRDES_SOS, 5, (2400.0f/config.sample_rate), 0.0f, 1.0f, 30.0f);
+		runtime->rds_filter[i] = iirfilt_rrrf_create_prototype(LIQUID_IIRDES_BUTTER, LIQUID_IIRDES_LOWPASS, LIQUID_IIRDES_SOS, 4, (2400.0f/config.sample_rate), 0.0f, 1.0f, 30.0f);
 
 		if(config.stereo_ssb) init_delay_line(&runtime->rds_delays[i], config.stereo_ssb*2);
 	}
