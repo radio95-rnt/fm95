@@ -6,7 +6,6 @@
 
 typedef struct {
 	float phase;
-	double unwrapped_phase;
 	float phase_increment;
 	float sample_rate;
 } Oscillator;

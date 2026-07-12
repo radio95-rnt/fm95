@@ -2,7 +2,6 @@
 
 void init_oscillator(Oscillator *osc, float frequency, float sample_rate) {
 	osc->phase = 0.0f;
-	osc->unwrapped_phase = 0.0;
 	osc->phase_increment = (M_2PI * frequency) / sample_rate;
 	osc->sample_rate = sample_rate;
 }
@@ -33,7 +32,6 @@ float get_oscillator_cos_multiplier_ni(Oscillator *osc, float multiplier) {
 
 inline bool advance_oscillator(Oscillator *osc) {
 	osc->phase += osc->phase_increment;
-	osc->unwrapped_phase += osc->phase_increment;
 	if (osc->phase >= M_2PI) {
 		osc->phase -= M_2PI;
 		return true;

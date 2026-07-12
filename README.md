@@ -41,6 +41,10 @@ Should run completly fine on a pi 5, fine on a pi 3b (~30% cpu)
 
 FM95 also includes some other apps, such as chimer95 which generates GTS tones each half hour, and vban95 now which is a buffered VBAN receiver. And now also SCA generation was moved to sca95 from fm95!
 
+## Feature Requests
+
+In case you are missing something, you can create an issue, and if you actually do need the feature and can prove it, and also provide/tell how to test the feature - any feature is welcome to be implemented (though i never said when will it be done)
+
 ## Usage of other projects
 
 The apps use inih by Ben Hoyt.

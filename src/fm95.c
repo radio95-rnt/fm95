@@ -257,7 +257,7 @@ int run_fm95(FM95_Config* config, FM95_Runtime* runtime, FM95_RunResult* result)
 					uint8_t osc_stream = 12 + stream;
 					if (osc_stream >= 13) osc_stream++; // "The first position, 61,75 kHz is not used to protect the basic subcarrier of 57 kHz on existing receivers." - IEC 62106-1
 
-					float shaped = 0.0f;
+					float shaped;
 					iirfilt_rrrf_execute(runtime->rds_filter[stream], runtime->rds_symbol[stream], &shaped);
 
 					float carrier = get_oscillator_cos_multiplier_ni(&runtime->osc, osc_stream * 4.0f);
@@ -338,12 +338,18 @@ static int config_handler(void* user, const char* section, const char* name, con
 	else if(MATCH("advanced", "lpf_order")) pconfig->lpf_order = atoi(value);
 	else if(MATCH("advanced", "stereo_ssb")) pconfig->stereo_ssb = atoi(value);
 	else if(MATCH("advanced", "preemp_unity")) pconfig->preemp_unity_freq = strtof(value, NULL);
-	else if(MATCH("advanced", "sample_rate")) pconfig->sample_rate = atoi(value);
-	else if(MATCH("advanced", "lpf_cutoff")) {
+	else if(MATCH("advanced", "sample_rate")) {
+		pconfig->sample_rate = atoi(value);
+		if(pconfig->sample_rate < 0) {
+			fprintf(stderr, "Negative sample rate\n");
+			return 0;
+		}
+	} else if(MATCH("advanced", "lpf_cutoff")) {
 		pconfig->lpf_cutoff = strtof(value, NULL);
 		if(pconfig->lpf_cutoff > (pconfig->sample_rate * 0.5)) {
 			pconfig->lpf_cutoff = (pconfig->sample_rate * 0.5);
-			fprintf(stderr, "LPF cutoff over niquist, limiting.\n");
+			fprintf(stderr, "LPF cutoff over niquist.\n");
+			return 0;
 		}
 	} else if(MATCH("advanced", "headroom")) pconfig->volumes.headroom = strtof(value, NULL);
 	else if(MATCH("advanced", "drive")) pconfig->volumes.drive = strtof(value, NULL);
