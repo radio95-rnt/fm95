@@ -255,7 +255,7 @@ int run_fm95(FM95_Config* config, FM95_Runtime* runtime, FM95_RunResult* result)
 					}
 
 					uint8_t osc_stream = 12 + stream;
-					if (osc_stream >= 13) osc_stream++;
+					if (osc_stream >= 13) osc_stream++; // "The first position, 61,75 kHz is not used to protect the basic subcarrier of 57 kHz on existing receivers." - IEC 62106-1
 
 					float shaped = 0.0f;
 					iirfilt_rrrf_execute(runtime->rds_filter[stream], runtime->rds_symbol[stream], &shaped);
