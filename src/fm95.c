@@ -258,11 +258,11 @@ int run_fm95(FM95_Config* config, FM95_Runtime* runtime, FM95_RunResult* result)
 					if (osc_stream >= 13) osc_stream++;
 
 					float shaped = 0.0f;
-					iirfilt_rrrf_execute(runtime->rds_filter[stream], runtime->rds_symbol[stream], &shaped);
+					iirfilt_rrrf_execute(runtime->rds_filter[stream], clock * runtime->rds_symbol[stream], &shaped);
 
 					float carrier = get_oscillator_cos_multiplier_ni(&runtime->osc, osc_stream * 4.0f);
 					if (config->stereo_ssb) carrier = delay_line(&runtime->rds_delays[stream], carrier);
-					mpx += clock * shaped * carrier * config->volumes.rds;
+					mpx += shaped * carrier * config->volumes.rds;
 				}
 			}
 
