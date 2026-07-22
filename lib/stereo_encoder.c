@@ -16,31 +16,28 @@ void init_stereo_encoder(StereoEncoder* st, uint8_t stereo_ssb, uint8_t multipli
 float stereo_encode(StereoEncoder* st, uint8_t enabled, float left, float right, float *audio) {
     float mid = (left+right) * 0.5f;
     if(!enabled) {
-        *audio = mid * 2.0f * st->audio_volume;
+        *audio = mid * st->audio_volume * 2.0f;
         return 0.0f;
     }
 
-    if(st->stereo_hilbert) mid = delay_line(&st->delay, mid);
-
     float side = (left-right) * 0.5f;
-
-    float complex stereo_hilbert = 0+0*I;
-    if(st->stereo_hilbert) firhilbf_r2c_execute(st->stereo_hilbert, side, &stereo_hilbert);
-    
     float signalx1 = get_oscillator_sin_multiplier_ni(st->osc, st->multiplier);
-
-    float signalx2cos = 0.0f;
-    if(st->stereo_hilbert) {
-        signalx1 = delay_line(&st->delay_pilot, signalx1);
-        signalx2cos = get_oscillator_cos_multiplier_ni(st->osc, st->multiplier * 2.0f);
-    }
     float signalx2 = get_oscillator_sin_multiplier_ni(st->osc, st->multiplier * 2.0f);
-
-    *audio = mid * st->audio_volume;
     if(st->stereo_hilbert) {
-        float stereo = (crealf(stereo_hilbert) * signalx2) - (cimagf(stereo_hilbert) * signalx2cos);
-        *audio += stereo * st->audio_volume;
-    } else *audio += (side*signalx2) * st->audio_volume;
+        float complex stereo_hilbert = 0+0*I;
+        float signalx2cos = get_oscillator_cos_multiplier_ni(st->osc, st->multiplier * 2.0f);
+
+        mid = delay_line(&st->delay, mid);
+        *audio = mid * st->audio_volume;
+        signalx1 = delay_line(&st->delay_pilot, signalx1);
+
+        firhilbf_r2c_execute(st->stereo_hilbert, side, &stereo_hilbert);
+
+        *audio += ((crealf(stereo_hilbert) * signalx2) - (cimagf(stereo_hilbert) * signalx2cos)) * st->audio_volume;
+        return signalx1 * st->pilot_volume;
+    }
+
+    *audio = mid * st->audio_volume + (side*signalx2) * st->audio_volume;
     return signalx1 * st->pilot_volume;
 }
 

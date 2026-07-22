@@ -164,8 +164,6 @@ if((pulse_error = write_PulseOutputDevice(&runtime->output_device, output, sizeo
 
 int run_fm95(FM95_Config* config, FM95_Runtime* runtime, FM95_RunResult* result) {
 	float output[BUFFER_SIZE];
-	FM95_RunResult temp_result;
-	memset(&temp_result, 0, sizeof(FM95_RunResult));
 
 	int pulse_error;
 
@@ -214,14 +212,14 @@ int run_fm95(FM95_Config* config, FM95_Runtime* runtime, FM95_RunResult* result)
 			float r = audio_stereo_input[2*i+1]*config->audio_preamp;
 
 			float mono = 0.5f * (fabsf(l) + fabsf(r));
-			temp_result.input_level = mono;
+			result->input_level = mono;
 
 			if(config->agc_max != 0.0) {
 				float agc_gain = process_agc(&runtime->agc, mono);
 				l *= agc_gain;
 				r *= agc_gain;
-				temp_result.agc_gain = agc_gain;
-			} else temp_result.agc_gain = 0.0f;
+				result->agc_gain = agc_gain;
+			} else result->agc_gain = 0.0f;
 
 			float mod_l, mod_r;
 
@@ -238,7 +236,7 @@ int run_fm95(FM95_Config* config, FM95_Runtime* runtime, FM95_RunResult* result)
 			mod_l = tanhf(mod_l * config->volumes.drive) * softclip_norm;
 			mod_r = tanhf(mod_r * config->volumes.drive) * softclip_norm;
 
-			if(do_result) temp_result.audio_level = (mod_l + mod_r) * 0.5f;
+			if(do_result) result->audio_level = (mod_l + mod_r) * 0.5f;
 
 			mpx = stereo_encode(&runtime->stencode, config->stereo, mod_l, mod_r, &audio);
 
@@ -266,12 +264,11 @@ int run_fm95(FM95_Config* config, FM95_Runtime* runtime, FM95_RunResult* result)
 				}
 			}
 
-			mpx = bs412_compress(&runtime->bs412, audio, mpx+mpx_in[i], &temp_result.mpx_power);
-			temp_result.bs412_gain = runtime->bs412.gain;
+			mpx = bs412_compress(&runtime->bs412, audio, mpx+mpx_in[i], &result->mpx_power);
+			result->bs412_gain = runtime->bs412.gain;
 
 			output[i] = tanhf(mpx)*config->master_volume; // Ensure peak deviation of 75 khz (or the set deviation), assuming we're calibrated correctly
-		} memcpy(result, &temp_result, sizeof(FM95_RunResult));
-		_pulse_output;
+		} _pulse_output;
 	}
 
 	return 0;
@@ -338,13 +335,8 @@ static int config_handler(void* user, const char* section, const char* name, con
 	else if(MATCH("advanced", "lpf_order")) pconfig->lpf_order = atoi(value);
 	else if(MATCH("advanced", "stereo_ssb")) pconfig->stereo_ssb = atoi(value);
 	else if(MATCH("advanced", "preemp_unity")) pconfig->preemp_unity_freq = strtof(value, NULL);
-	else if(MATCH("advanced", "sample_rate")) {
-		pconfig->sample_rate = atoi(value);
-		if(pconfig->sample_rate < 0) {
-			fprintf(stderr, "Negative sample rate\n");
-			return 0;
-		}
-	} else if(MATCH("advanced", "lpf_cutoff")) {
+	else if(MATCH("advanced", "sample_rate")) pconfig->sample_rate = atoi(value);
+	else if(MATCH("advanced", "lpf_cutoff")) {
 		pconfig->lpf_cutoff = strtof(value, NULL);
 		if(pconfig->lpf_cutoff > (pconfig->sample_rate * 0.5)) {
 			pconfig->lpf_cutoff = (pconfig->sample_rate * 0.5);
@@ -465,8 +457,8 @@ static void *handle_client(ipc_client_arg_t *arg) {
 	FM95_Data* data = arg->user_data;
     free(arg);
 
-    char buf[BUF_SIZE];
-	char reply = 0;
+    uint8_t buf[BUF_SIZE];
+	uint8_t reply = 0;
     ssize_t n;
 	float val;
 	uint8_t bval;
