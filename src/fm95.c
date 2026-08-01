@@ -15,7 +15,7 @@
 #include "gain_control.h"
 #include "bit_ring.h"
 
-#define BUFFER_SIZE 24990 // This defines how many samples to process at a time, because the loop here is this: get signal -> process signal -> output signal, and when we get signal we actually get BUFFER_SIZE of them
+#define BUFFER_SIZE 12495 // This defines how many samples to process at a time, because the loop here is this: get signal -> process signal -> output signal, and when we get signal we actually get BUFFER_SIZE of them
 
 #include "audio.h"
 #include "ipc.h"
