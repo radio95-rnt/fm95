@@ -33,6 +33,7 @@ typedef struct {
 	float rds;
 	float drive;
 	float makeup;
+	float softclip_norm;
 } FM95_Volumes;
 typedef struct {
 	FM95_Options options;
@@ -169,7 +170,7 @@ int run_fm95(FM95_Config* config, FM95_Runtime* runtime, FM95_RunResult* result)
 
 	if(config->calibration != 0) {
 		while(to_run) {
-			for (int i = 0; i < BUFFER_SIZE; i++) {
+			for (uint32_t i = 0; i < BUFFER_SIZE; i++) {
 				float sample = get_oscillator_sin_sample(&runtime->osc);
 				if(config->calibration == 2) sample = (sample > 0.0f) ? 1.0f : -1.0f; // Sine wave to square wave filter, 50% duty cycle
 				else if(config->calibration == 3) sample *= (19000/config->mpx_deviation);
@@ -184,44 +185,33 @@ int run_fm95(FM95_Config* config, FM95_Runtime* runtime, FM95_RunResult* result)
 	float mpx_in[BUFFER_SIZE] = {0};
 
 	bool mpx_on = config->options.mpx_on;
+	float mpx = 0.0f;
+	float audio = 0.0f;
+	float l, r, mid, side;
+	float mod_l, mod_r;
 
 	while (to_run) {
-		float softclip_norm = config->volumes.makeup / tanhf(config->volumes.drive);
-
 		if((pulse_error = read_PulseInputDevice(&runtime->input_device, audio_stereo_input, sizeof(audio_stereo_input)))) { // get output from the function and assign it into pulse_error, this comment to avoid confusion
 			fprintf(stderr, "Error reading from input device: %s\n", pa_strerror(pulse_error));
 			to_run = 0;
 			break;
 		}
-		if(mpx_on) {
-			if((pulse_error = read_PulseInputDevice(&runtime->mpx_device, mpx_in, sizeof(mpx_in)))) {
-				fprintf(stderr, "Error reading from MPX device: %s\nDisabling MPX.\n", pa_strerror(pulse_error));
-				mpx_on = 0;
-			}
+		if(mpx_on && (pulse_error = read_PulseInputDevice(&runtime->mpx_device, mpx_in, sizeof(mpx_in)))) {
+			fprintf(stderr, "Error reading from MPX device: %s\nDisabling MPX.\n", pa_strerror(pulse_error));
+			mpx_on = 0;
 		}
 
-		for(uint16_t i = 0; i < BUFFER_SIZE; i++) {
+		for(uint32_t i = 0; i < BUFFER_SIZE - 1;) {
 			advance_oscillator(&runtime->osc);
 			
-			bool do_result = (i == BUFFER_SIZE - 1);
-
-			float mpx = 0.0f;
-			float audio = 0.0f;
-
-			float l = audio_stereo_input[2*i+0]*config->audio_preamp;
-			float r = audio_stereo_input[2*i+1]*config->audio_preamp;
-
-			float mono = 0.5f * (fabsf(l) + fabsf(r));
-			result->input_level = mono;
+			l = audio_stereo_input[2*i]*config->audio_preamp;
+			r = audio_stereo_input[2*i+1]*config->audio_preamp;
 
 			if(config->agc_max != 0.0) {
-				float agc_gain = process_agc(&runtime->agc, mono);
+				float agc_gain = process_agc(&runtime->agc, 0.5f * (l + r));
 				l *= agc_gain;
 				r *= agc_gain;
-				result->agc_gain = agc_gain;
-			} else result->agc_gain = 0.0f;
-
-			float mod_l, mod_r;
+			}
 
 			if(config->lpf_cutoff != 0) {
 				iirfilt_rrrf_execute(runtime->lpf_l, l, &mod_l);
@@ -233,12 +223,13 @@ int run_fm95(FM95_Config* config, FM95_Runtime* runtime, FM95_RunResult* result)
 				mod_r = apply_preemphasis(&runtime->preemp_r, mod_r);
 			}
 
-			mod_l = tanhf(mod_l * config->volumes.drive) * softclip_norm;
-			mod_r = tanhf(mod_r * config->volumes.drive) * softclip_norm;
+			mod_l = tanhf(mod_l * config->volumes.drive) * config->volumes.softclip_norm;
+			mod_r = tanhf(mod_r * config->volumes.drive) * config->volumes.softclip_norm;
 
-			if(do_result) result->audio_level = (mod_l + mod_r) * 0.5f;
+			mid = (mod_l + mod_r) * 0.5f;
+			side = (mod_l - mod_r) * 0.5f;
 
-			mpx = stereo_encode(&runtime->stencode, config->stereo, mod_l, mod_r, &audio);
+			mpx = stereo_encode(&runtime->stencode, config->stereo, mid, side, &audio);
 
 			{
 				static const float stream_shift[4] = {0.0f, (float)M_PI, (float)M_PI_2, (float)(3.0 * M_PI_2)};
@@ -265,10 +256,76 @@ int run_fm95(FM95_Config* config, FM95_Runtime* runtime, FM95_RunResult* result)
 			}
 
 			mpx = bs412_compress(&runtime->bs412, audio, mpx+mpx_in[i], &result->mpx_power);
-			result->bs412_gain = runtime->bs412.gain;
 
-			output[i] = tanhf(mpx)*config->master_volume; // Ensure peak deviation of 75 khz (or the set deviation), assuming we're calibrated correctly
-		} _pulse_output;
+			output[i++] = tanhf(mpx)*config->master_volume; // Ensure peak deviation of 75 khz (or the set deviation), assuming we're calibrated correctly
+		}
+
+		// This repeats - why? to save that little bit of performance! Running expensive if statement whether to save result or not is a lot of processing time, so, how about not doing the if statements?
+
+		advance_oscillator(&runtime->osc);
+			
+		l = audio_stereo_input[2*BUFFER_SIZE-2]*config->audio_preamp;
+		r = audio_stereo_input[2*BUFFER_SIZE-1]*config->audio_preamp;
+
+		mid = 0.5f * (l + r);
+		result->input_level = mid;
+
+		if(config->agc_max != 0.0) {
+			float agc_gain = process_agc(&runtime->agc, mid);
+			l *= agc_gain;
+			r *= agc_gain;
+			result->agc_gain = agc_gain;
+		} else result->agc_gain = 0.0f;
+
+		if(config->lpf_cutoff != 0) {
+			iirfilt_rrrf_execute(runtime->lpf_l, l, &mod_l);
+			iirfilt_rrrf_execute(runtime->lpf_r, r, &mod_r);
+		}
+
+		if(config->preemphasis != 0) {
+			mod_l = apply_preemphasis(&runtime->preemp_l, mod_l);
+			mod_r = apply_preemphasis(&runtime->preemp_r, mod_r);
+		}
+
+		mod_l = tanhf(mod_l * config->volumes.drive) * config->volumes.softclip_norm;
+		mod_r = tanhf(mod_r * config->volumes.drive) * config->volumes.softclip_norm;
+
+		mid = (mod_l + mod_r) * 0.5f;
+		side = (mod_l - mod_r) * 0.5f;
+		result->audio_level = mid;
+
+		mpx = stereo_encode(&runtime->stencode, config->stereo, mid, side, &audio);
+
+		{
+			static const float stream_shift[4] = {0.0f, (float)M_PI, (float)M_PI_2, (float)(3.0 * M_PI_2)};
+			static float prev_shifted_phase[4] = {0.0f, (float)M_PI, (float)M_PI_2, (float)(3.0 * M_PI_2)};
+
+			float clock = get_oscillator_cos_multiplier_ni(&runtime->osc, 1.0f);
+			for (uint8_t stream = 0; stream < config->rds_streams; stream++) {
+				if (oscillator_did_cycle(&runtime->osc, stream_shift[stream], &prev_shifted_phase[stream])) {
+					uint8_t bit;
+					if (bit_ring_read1(&runtime->rds_bitring[stream], &bit)) runtime->rds_last_bit[stream] = bit;
+					runtime->rds_symbol[stream] = runtime->rds_last_bit[stream] ? 1.0f : -1.0f;
+				}
+
+				uint8_t osc_stream = 12 + stream;
+				if (osc_stream >= 13) osc_stream++; // "The first position, 61,75 kHz is not used to protect the basic subcarrier of 57 kHz on existing receivers." - IEC 62106-1
+
+				float shaped;
+				iirfilt_rrrf_execute(runtime->rds_filter[stream], runtime->rds_symbol[stream], &shaped);
+
+				float carrier = get_oscillator_cos_multiplier_ni(&runtime->osc, osc_stream * 4.0f);
+				if (config->stereo_ssb) carrier = delay_line(&runtime->rds_delays[stream], carrier);
+				mpx += clock * shaped * carrier * config->volumes.rds;
+			}
+		}
+
+		mpx = bs412_compress(&runtime->bs412, audio, mpx+mpx_in[BUFFER_SIZE-1], &result->mpx_power);
+		result->bs412_gain = runtime->bs412.gain;
+
+		output[BUFFER_SIZE-1] = tanhf(mpx)*config->master_volume; // Ensure peak deviation of 75 khz (or the set deviation), assuming we're calibrated correctly
+		
+		_pulse_output;
 	}
 
 	return 0;
@@ -344,9 +401,13 @@ static int config_handler(void* user, const char* section, const char* name, con
 			return 0;
 		}
 	} else if(MATCH("advanced", "headroom")) pconfig->volumes.headroom = strtof(value, NULL);
-	else if(MATCH("advanced", "drive")) pconfig->volumes.drive = strtof(value, NULL);
-	else if(MATCH("advanced", "makeup")) pconfig->volumes.makeup = strtof(value, NULL);
-	else if(MATCH("volumes", "pilot")) pconfig->volumes.pilot = strtof(value, NULL);
+	else if(MATCH("advanced", "drive")) {
+		pconfig->volumes.drive = strtof(value, NULL);
+		pconfig->volumes.softclip_norm = pconfig->volumes.makeup / tanhf(pconfig->volumes.drive);
+	} else if(MATCH("advanced", "makeup")) {
+		pconfig->volumes.makeup = strtof(value, NULL);
+		pconfig->volumes.softclip_norm = pconfig->volumes.makeup / tanhf(pconfig->volumes.drive);
+	} else if(MATCH("volumes", "pilot")) pconfig->volumes.pilot = strtof(value, NULL);
 	else if(MATCH("volumes", "rds")) pconfig->volumes.rds = strtof(value, NULL);
 
     return 1;
@@ -488,12 +549,14 @@ static void *handle_client(ipc_client_arg_t *arg) {
 				// Set makeup
 				memcpy(&val, buf + 1, sizeof(float));
 				data->config->volumes.makeup = val;
+				data->config->volumes.softclip_norm = data->config->volumes.makeup / tanhf(data->config->volumes.drive);
 				reply = 0;
 				break;
 			case 102:
 				// Set drive
 				memcpy(&val, buf + 1, sizeof(float));
 				data->config->volumes.drive = val;
+				data->config->volumes.softclip_norm = data->config->volumes.makeup / tanhf(data->config->volumes.drive);
 				reply = 0;
 				break;
 			case 103:
@@ -617,7 +680,8 @@ int main(int argc, char **argv) {
 			.rds = 0.045f,
 			.headroom = 0.05f,
 			.drive = 1.0f,
-			.makeup = 1.0f
+			.makeup = 1.0f,
+			.softclip_norm = 1.0f
 		},
 		.stereo = 1,
 		.stereo_ssb = 0,
