@@ -34,7 +34,7 @@ foreach(SRC_FILE ${SRC_FILES})
     get_filename_component(EXEC_NAME ${SRC_FILE} NAME_WE)
 
     add_executable(${EXEC_NAME} ${SRC_FILE})
-    target_compile_options(${EXEC_NAME} PRIVATE -O2 -Wall -Wextra -Werror -Wno-unused-parameter)
+    target_compile_options(${EXEC_NAME} PRIVATE -O3 -mcpu=native -Wall -Wextra -Werror -Wno-unused-parameter)
     
     if(EXEC_NAME STREQUAL "fm95")
         target_link_libraries(${EXEC_NAME} PRIVATE m inih pulse pulse-simple liquid pthread libfmfilter libfm)
