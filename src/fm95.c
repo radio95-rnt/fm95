@@ -58,6 +58,7 @@ typedef struct {
 	char ini_config_path[64];
 
 	uint8_t lpf_order;
+	uint8_t rds_lpf_order;
 	float preemp_unity_freq;
 	float agc_target;
 	float agc_attack;
@@ -384,6 +385,7 @@ static int config_handler(void* user, const char* section, const char* name, con
 	else if(MATCH("fm95", "bs412_knee")) pconfig->bs412_knee = strtof(value, NULL);
 	else if(MATCH("fm95", "bs412_strenght")) pconfig->bs412_strenght = strtof(value, NULL);
 	else if(MATCH("advanced", "lpf_order")) pconfig->lpf_order = atoi(value);
+	else if(MATCH("advanced", "rds_lpf_order")) pconfig->rds_lpf_order = atoi(value);
 	else if(MATCH("advanced", "stereo_ssb")) pconfig->stereo_ssb = atoi(value);
 	else if(MATCH("advanced", "preemp_unity")) pconfig->preemp_unity_freq = strtof(value, NULL);
 	else if(MATCH("advanced", "sample_rate")) pconfig->sample_rate = atoi(value);
@@ -493,7 +495,7 @@ void init_runtime(FM95_Runtime* runtime, const FM95_Config config) {
 		runtime->rds_symbol[i] = -1.0f;
 		runtime->rds_last_bit[i] = 0;
 
-		runtime->rds_filter[i] = iirfilt_rrrf_create_prototype(LIQUID_IIRDES_BUTTER, LIQUID_IIRDES_LOWPASS, LIQUID_IIRDES_SOS, 7, (2400.0f/config.sample_rate), 0.0f, 1.0f, 30.0f);
+		runtime->rds_filter[i] = iirfilt_rrrf_create_prototype(LIQUID_IIRDES_BUTTER, LIQUID_IIRDES_LOWPASS, LIQUID_IIRDES_SOS, config.rds_lpf_order, (2400.0f/config.sample_rate), 0.0f, 1.0f, 30.0f);
 	}
 }
 
@@ -693,6 +695,7 @@ int main(int argc, char **argv) {
 		.ini_config_path = DEFAULT_INI_PATH,
 
 		.lpf_order = 15, // how good the lpf is, usually no more than 18 is needed
+		.rds_lpf_order = 8, // rds lpf order - i have no idea which cases require this to be set
 		.preemp_unity_freq = 15000.0f, // the preemphasis makes the highs louder, which for digital means no good, so instead of making the highs louder, make the lows quieter which gives the illusion of highs louder
 		.agc_target = 0.625f,
 		.agc_attack = 0.03f,
