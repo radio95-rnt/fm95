@@ -10,7 +10,7 @@ inline float power_to_dbr(float power, float ref) {
 }
 
 void init_bs412(BS412Compressor* comp, uint32_t mpx_deviation, float target_power, float attack, float release, float max_gain, float gate, float knee_db, float strenght, uint32_t sample_rate) {
-	comp->reference = (19000.0f / mpx_deviation) * (19000.0f / mpx_deviation);
+	comp->reference = (19000.0f / mpx_deviation) * ((19000.0f / mpx_deviation) * 0.5f);
 	comp->avg_power = 0.0f;
     comp->alpha = 1.0f - expf(-1.0f / (BS412_TIME * sample_rate));
 	comp->sample_rate = sample_rate;
