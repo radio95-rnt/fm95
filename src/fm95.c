@@ -261,8 +261,8 @@ int run_fm95(FM95_Config* config, FM95_Runtime* runtime, FM95_RunResult* result)
 
 		advance_oscillator(&runtime->osc);
 			
-		l = audio_stereo_input[2*i]*config->audio_preamp;
-		r = audio_stereo_input[2*i+1]*config->audio_preamp;
+		l = audio_stereo_input[2*BUFFER_SIZE-2]*config->audio_preamp;
+		r = audio_stereo_input[2*BUFFER_SIZE-1]*config->audio_preamp;
 
 		mid = 0.5f * (l + r);
 		result->input_level = mid;
