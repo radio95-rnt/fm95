@@ -761,6 +761,22 @@ int main(int argc, char **argv) {
 		.run_result = &runres
 	};
 
+	#if defined(__aarch64__)
+	{
+		uint64_t fpcr;
+		__asm__ volatile("mrs %0, fpcr" : "=r"(fpcr));
+		fpcr |= (1ULL << 24); // FZ
+		__asm__ volatile("msr fpcr, %0" :: "r"(fpcr));
+	}
+	#elif defined(__arm__)
+	{
+		uint32_t fpscr;
+		__asm__ volatile("vmrs %0, fpscr" : "=r"(fpscr));
+		fpscr |= (1u << 24); // FZ
+		__asm__ volatile("vmsr fpscr, %0" :: "r"(fpscr));
+	}
+	#endif
+
 	ipc_ctx_t ctx;
 	ipc_ctx_t *pctx = &ctx;
 	if(create_ipc(pctx, handle_client, "/etc/fm95/ctl.socket", &fmdata) < 0) {
