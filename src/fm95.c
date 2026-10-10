@@ -190,6 +190,9 @@ int run_fm95(FM95_Config* config, FM95_Runtime* runtime, FM95_RunResult* result)
 	float l, r, mid, side;
 	float mod_l, mod_r;
 
+	static const float stream_shift[4] = {0.0f, (float)M_PI, (float)M_PI_2, (float)(3.0 * M_PI_2)};
+	static float prev_shifted_phase[4] = {0.0f, (float)M_PI, (float)M_PI_2, (float)(3.0 * M_PI_2)};
+
 	while (to_run) {
 		if((pulse_error = read_PulseInputDevice(&runtime->input_device, audio_stereo_input, sizeof(audio_stereo_input)))) { // get output from the function and assign it into pulse_error, this comment to avoid confusion
 			fprintf(stderr, "Error reading from input device: %s\n", pa_strerror(pulse_error));
@@ -232,9 +235,6 @@ int run_fm95(FM95_Config* config, FM95_Runtime* runtime, FM95_RunResult* result)
 			mpx = stereo_encode(&runtime->stencode, config->stereo, mid, side, &audio);
 
 			{
-				static const float stream_shift[4] = {0.0f, (float)M_PI, (float)M_PI_2, (float)(3.0 * M_PI_2)};
-				static float prev_shifted_phase[4] = {0.0f, (float)M_PI, (float)M_PI_2, (float)(3.0 * M_PI_2)};
-
 				float clock = get_oscillator_cos_multiplier_ni(&runtime->osc, 1.0f);
 				for (uint8_t stream = 0; stream < config->rds_streams; stream++) {
 					if (oscillator_did_cycle(&runtime->osc, stream_shift[stream], &prev_shifted_phase[stream])) {
@@ -297,9 +297,6 @@ int run_fm95(FM95_Config* config, FM95_Runtime* runtime, FM95_RunResult* result)
 		mpx = stereo_encode(&runtime->stencode, config->stereo, mid, side, &audio);
 
 		{
-			static const float stream_shift[4] = {0.0f, (float)M_PI, (float)M_PI_2, (float)(3.0 * M_PI_2)};
-			static float prev_shifted_phase[4] = {0.0f, (float)M_PI, (float)M_PI_2, (float)(3.0 * M_PI_2)};
-
 			float clock = get_oscillator_cos_multiplier_ni(&runtime->osc, 1.0f);
 			for (uint8_t stream = 0; stream < config->rds_streams; stream++) {
 				if (oscillator_did_cycle(&runtime->osc, stream_shift[stream], &prev_shifted_phase[stream])) {
