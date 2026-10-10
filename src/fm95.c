@@ -226,11 +226,11 @@ int run_fm95(FM95_Config* config, FM95_Runtime* runtime, FM95_RunResult* result)
 				mod_r = apply_preemphasis(&runtime->preemp_r, mod_r);
 			}
 
-			mod_l = tanhf(mod_l * config->volumes.drive) * config->volumes.softclip_norm;
-			mod_r = tanhf(mod_r * config->volumes.drive) * config->volumes.softclip_norm;
-
-			mid = (mod_l + mod_r) * 0.5f;
-			side = (mod_l - mod_r) * 0.5f;
+			mod_l = tanhf(mod_l * config->volumes.drive);
+			mid = (mod_l + mod_r) * config->volumes.softclip_norm;
+			
+			mod_r = tanhf(mod_r * config->volumes.drive);
+			side = (mod_l - mod_r) * config->volumes.softclip_norm;
 
 			mpx = stereo_encode(&runtime->stencode, config->stereo, mid, side, &audio);
 
@@ -400,10 +400,10 @@ static int config_handler(void* user, const char* section, const char* name, con
 	} else if(MATCH("advanced", "headroom")) pconfig->volumes.headroom = strtof(value, NULL);
 	else if(MATCH("advanced", "drive")) {
 		pconfig->volumes.drive = strtof(value, NULL);
-		pconfig->volumes.softclip_norm = pconfig->volumes.makeup / tanhf(pconfig->volumes.drive);
+		pconfig->volumes.softclip_norm = pconfig->volumes.makeup / tanhf(pconfig->volumes.drive) / 2.0f;
 	} else if(MATCH("advanced", "makeup")) {
 		pconfig->volumes.makeup = strtof(value, NULL);
-		pconfig->volumes.softclip_norm = pconfig->volumes.makeup / tanhf(pconfig->volumes.drive);
+		pconfig->volumes.softclip_norm = pconfig->volumes.makeup / tanhf(pconfig->volumes.drive) / 2.0f;
 	} else if(MATCH("volumes", "pilot")) pconfig->volumes.pilot = strtof(value, NULL);
 	else if(MATCH("volumes", "rds")) pconfig->volumes.rds = strtof(value, NULL);
 
@@ -546,14 +546,14 @@ static void *handle_client(ipc_client_arg_t *arg) {
 				// Set makeup
 				memcpy(&val, buf + 1, sizeof(float));
 				data->config->volumes.makeup = val;
-				data->config->volumes.softclip_norm = data->config->volumes.makeup / tanhf(data->config->volumes.drive);
+				data->config->volumes.softclip_norm = data->config->volumes.makeup / tanhf(data->config->volumes.drive) / 2.0f;
 				reply = 0;
 				break;
 			case 102:
 				// Set drive
 				memcpy(&val, buf + 1, sizeof(float));
 				data->config->volumes.drive = val;
-				data->config->volumes.softclip_norm = data->config->volumes.makeup / tanhf(data->config->volumes.drive);
+				data->config->volumes.softclip_norm = data->config->volumes.makeup / tanhf(data->config->volumes.drive) / 2.0f;
 				reply = 0;
 				break;
 			case 103:
@@ -678,7 +678,7 @@ int main(int argc, char **argv) {
 			.headroom = 0.05f,
 			.drive = 1.0f,
 			.makeup = 1.0f,
-			.softclip_norm = 1.0f
+			.softclip_norm = 0.5f
 		},
 		.stereo = 1,
 		.stereo_ssb = 0,
