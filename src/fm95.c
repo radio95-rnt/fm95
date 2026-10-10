@@ -81,7 +81,6 @@ typedef struct {
 	BS412Compressor bs412;
 	StereoEncoder stencode;
 	AGC agc;
-	delay_line_t rds_delays[4];
 	bit_ring_t rds_bitring[4];
 	float rds_symbol[4];
 	uint8_t rds_last_bit[4];
@@ -146,7 +145,6 @@ void cleanup_runtime(FM95_Runtime* runtime, const FM95_Config config) {
 	for(int i = 0; i < 4; i++) {
 		free(runtime->rds_bitring[i].bits);
 		iirfilt_rrrf_destroy(runtime->rds_filter[i]);
-		if(config.stereo_ssb) exit_delay_line(&runtime->rds_delays[i]);
 	}
 }
 
@@ -250,7 +248,6 @@ int run_fm95(FM95_Config* config, FM95_Runtime* runtime, FM95_RunResult* result)
 					iirfilt_rrrf_execute(runtime->rds_filter[stream], runtime->rds_symbol[stream], &shaped);
 
 					float carrier = get_oscillator_cos_multiplier_ni(&runtime->osc, osc_stream * 4.0f);
-					if (config->stereo_ssb) carrier = delay_line(&runtime->rds_delays[stream], carrier);
 					mpx += clock * shaped * carrier * config->volumes.rds;
 				}
 			}
@@ -289,7 +286,7 @@ int run_fm95(FM95_Config* config, FM95_Runtime* runtime, FM95_RunResult* result)
 
 		mod_l = tanhf(mod_l * config->volumes.drive);
 		mid = (mod_l + mod_r) * config->volumes.softclip_norm;
-		
+
 		mod_r = tanhf(mod_r * config->volumes.drive);
 		side = (mod_l - mod_r) * config->volumes.softclip_norm;
 		result->audio_level = mid;
@@ -312,7 +309,6 @@ int run_fm95(FM95_Config* config, FM95_Runtime* runtime, FM95_RunResult* result)
 				iirfilt_rrrf_execute(runtime->rds_filter[stream], runtime->rds_symbol[stream], &shaped);
 
 				float carrier = get_oscillator_cos_multiplier_ni(&runtime->osc, osc_stream * 4.0f);
-				if (config->stereo_ssb) carrier = delay_line(&runtime->rds_delays[stream], carrier);
 				mpx += clock * shaped * carrier * config->volumes.rds;
 			}
 		}
@@ -497,8 +493,6 @@ void init_runtime(FM95_Runtime* runtime, const FM95_Config config) {
 		runtime->rds_last_bit[i] = 0;
 
 		runtime->rds_filter[i] = iirfilt_rrrf_create_prototype(LIQUID_IIRDES_BUTTER, LIQUID_IIRDES_LOWPASS, LIQUID_IIRDES_SOS, 5, (2400.0f/config.sample_rate), 0.0f, 1.0f, 30.0f);
-
-		if(config.stereo_ssb) init_delay_line(&runtime->rds_delays[i], config.stereo_ssb*2);
 	}
 }
 
