@@ -228,7 +228,7 @@ int run_fm95(FM95_Config* config, FM95_Runtime* runtime, FM95_RunResult* result)
 
 			mod_l = tanhf(mod_l * config->volumes.drive);
 			mid = (mod_l + mod_r) * config->volumes.softclip_norm;
-			
+
 			mod_r = tanhf(mod_r * config->volumes.drive);
 			side = (mod_l - mod_r) * config->volumes.softclip_norm;
 
@@ -257,7 +257,7 @@ int run_fm95(FM95_Config* config, FM95_Runtime* runtime, FM95_RunResult* result)
 
 			mpx = bs412_compress(&runtime->bs412, audio, mpx+mpx_in[i], &result->mpx_power);
 
-			output[i++] = tanhf(mpx)*config->master_volume; // Ensure peak deviation of 75 khz (or the set deviation), assuming we're calibrated correctly
+			output[i++] = tanhf(mpx)*config->master_volume; // Ensure peak deviation of 75 khz, assuming we're calibrated correctly
 		}
 
 		// This repeats - why? to save that little bit of performance! Running expensive if statement whether to save result or not is a lot of processing time, so, how about not doing the if statements?
@@ -287,11 +287,11 @@ int run_fm95(FM95_Config* config, FM95_Runtime* runtime, FM95_RunResult* result)
 			mod_r = apply_preemphasis(&runtime->preemp_r, mod_r);
 		}
 
-		mod_l = tanhf(mod_l * config->volumes.drive) * config->volumes.softclip_norm;
-		mod_r = tanhf(mod_r * config->volumes.drive) * config->volumes.softclip_norm;
-
-		mid = (mod_l + mod_r) * 0.5f;
-		side = (mod_l - mod_r) * 0.5f;
+		mod_l = tanhf(mod_l * config->volumes.drive);
+		mid = (mod_l + mod_r) * config->volumes.softclip_norm;
+		
+		mod_r = tanhf(mod_r * config->volumes.drive);
+		side = (mod_l - mod_r) * config->volumes.softclip_norm;
 		result->audio_level = mid;
 
 		mpx = stereo_encode(&runtime->stencode, config->stereo, mid, side, &audio);
