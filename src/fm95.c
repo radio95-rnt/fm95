@@ -261,8 +261,8 @@ int run_fm95(FM95_Config* config, FM95_Runtime* runtime, FM95_RunResult* result)
 
 		advance_oscillator(&runtime->osc);
 			
-		l = audio_stereo_input[2*BUFFER_SIZE-2]*config->audio_preamp;
-		r = audio_stereo_input[2*BUFFER_SIZE-1]*config->audio_preamp;
+		l = audio_stereo_input[2*i]*config->audio_preamp;
+		r = audio_stereo_input[2*i+1]*config->audio_preamp;
 
 		mid = 0.5f * (l + r);
 		result->input_level = mid;
@@ -488,11 +488,11 @@ void init_runtime(FM95_Runtime* runtime, const FM95_Config config) {
 	}
 
 	for(int i = 0; i < 4; i++) {
-		bit_ring_init(&runtime->rds_bitring[i], 4096);
+		bit_ring_init(&runtime->rds_bitring[i], 3328); // 32 groups - aka 2.802526315789474 seconds
 		runtime->rds_symbol[i] = -1.0f;
 		runtime->rds_last_bit[i] = 0;
 
-		runtime->rds_filter[i] = iirfilt_rrrf_create_prototype(LIQUID_IIRDES_BUTTER, LIQUID_IIRDES_LOWPASS, LIQUID_IIRDES_SOS, 5, (2400.0f/config.sample_rate), 0.0f, 1.0f, 30.0f);
+		runtime->rds_filter[i] = iirfilt_rrrf_create_prototype(LIQUID_IIRDES_BUTTER, LIQUID_IIRDES_LOWPASS, LIQUID_IIRDES_SOS, 7, (2400.0f/config.sample_rate), 0.0f, 1.0f, 30.0f);
 	}
 }
 
