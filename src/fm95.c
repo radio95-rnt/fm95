@@ -247,10 +247,9 @@ int run_fm95(FM95_Config* config, FM95_Runtime* runtime, FM95_RunResult* result)
 					if (osc_stream >= 13) osc_stream++; // "The first position, 61,75 kHz is not used to protect the basic subcarrier of 57 kHz on existing receivers." - IEC 62106-1
 
 					float shaped;
-					iirfilt_rrrf_execute(runtime->rds_filter[stream], runtime->rds_symbol[stream], &shaped);
-
 					float carrier = get_oscillator_cos_multiplier_ni(&runtime->osc, osc_stream * 4.0f);
-					mpx += clock * shaped * carrier * config->volumes.rds;
+					iirfilt_rrrf_execute(runtime->rds_filter[stream], clock * runtime->rds_symbol[stream], &shaped);
+					mpx += shaped * carrier * config->volumes.rds;
 				}
 			}
 
@@ -308,10 +307,9 @@ int run_fm95(FM95_Config* config, FM95_Runtime* runtime, FM95_RunResult* result)
 				if (osc_stream >= 13) osc_stream++; // "The first position, 61,75 kHz is not used to protect the basic subcarrier of 57 kHz on existing receivers." - IEC 62106-1
 
 				float shaped;
-				iirfilt_rrrf_execute(runtime->rds_filter[stream], runtime->rds_symbol[stream], &shaped);
-
 				float carrier = get_oscillator_cos_multiplier_ni(&runtime->osc, osc_stream * 4.0f);
-				mpx += clock * shaped * carrier * config->volumes.rds;
+				iirfilt_rrrf_execute(runtime->rds_filter[stream], clock * runtime->rds_symbol[stream], &shaped);
+				mpx += shaped * carrier * config->volumes.rds;
 			}
 		}
 
