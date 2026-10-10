@@ -227,9 +227,8 @@ int run_fm95(FM95_Config* config, FM95_Runtime* runtime, FM95_RunResult* result)
 			}
 
 			mod_l = tanhf(mod_l * config->volumes.drive);
-			mid = (mod_l + mod_r) * config->volumes.softclip_norm;
-
 			mod_r = tanhf(mod_r * config->volumes.drive);
+			mid = (mod_l + mod_r) * config->volumes.softclip_norm;
 			side = (mod_l - mod_r) * config->volumes.softclip_norm;
 
 			mpx = stereo_encode(&runtime->stencode, config->stereo, mid, side, &audio);
@@ -286,9 +285,8 @@ int run_fm95(FM95_Config* config, FM95_Runtime* runtime, FM95_RunResult* result)
 		}
 
 		mod_l = tanhf(mod_l * config->volumes.drive);
-		mid = (mod_l + mod_r) * config->volumes.softclip_norm;
-
 		mod_r = tanhf(mod_r * config->volumes.drive);
+		mid = (mod_l + mod_r) * config->volumes.softclip_norm;
 		side = (mod_l - mod_r) * config->volumes.softclip_norm;
 		result->audio_level = mid;
 
