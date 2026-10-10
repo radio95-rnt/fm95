@@ -1,3 +1,4 @@
+#include <sys/mman.h>
 #include <getopt.h>
 #include <liquid/liquid.h>
 #include "ini.h"
@@ -743,6 +744,10 @@ int main(int argc, char **argv) {
 
 	FM95_Runtime runtime;
 	memset(&runtime, 0, sizeof(runtime));
+
+	if (mlockall(MCL_CURRENT | MCL_FUTURE) != 0) {
+	    perror("mlockall");   // not fatal, just warn
+	}
 
 	err = setup_audio(&runtime, dv_names, config);
 	if(err != 0) return err;
