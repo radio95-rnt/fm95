@@ -71,7 +71,7 @@ typedef struct {
 	float bs412_max;
 	float bs412_gate;
 	float bs412_knee;
-	float bs412_strenght;
+	float bs412_strength;
 	float lpf_cutoff;
 } FM95_Config;
 
@@ -189,6 +189,84 @@ if((pulse_error = write_PulseOutputDevice(&runtime->output_device, output, sizeo
 	break; \
 }
 
+static const float stream_shift[4] = {0.0f, (float)M_PI, (float)M_PI_2, (float)(3.0 * M_PI_2)};
+
+#if defined(__GNUC__) || defined(__clang__)
+#define FM95_FORCE_INLINE static inline __attribute__((always_inline))
+#else
+#define FM95_FORCE_INLINE static inline
+#endif
+
+FM95_FORCE_INLINE float process_sample(
+	const FM95_Config *config,
+	FM95_Runtime *runtime,
+	float in_l, float in_r,
+	float mpx_in,
+	float prev_shifted_phase[4],
+	FM95_RunResult *res
+) {
+	advance_oscillator(&runtime->osc);
+
+	float l = in_l * config->audio_preamp;
+	float r = in_r * config->audio_preamp;
+
+	if (res) res->input_level = 0.5f * (l + r);
+
+	if (config->agc_max != 0.0f) {
+		float agc_gain = process_agc(&runtime->agc, 0.5f * (l + r));
+		l *= agc_gain;
+		r *= agc_gain;
+		if (res) res->agc_gain = agc_gain;
+	} else if (res) res->agc_gain = 0.0f;
+
+	if (config->lpf_cutoff != 0) {
+		iirfilt_rrrf_execute(runtime->lpf_l, l, &l);
+		iirfilt_rrrf_execute(runtime->lpf_r, r, &r);
+	}
+
+	if (config->preemphasis != 0) {
+		l = apply_preemphasis(&runtime->preemp_l, l);
+		r = apply_preemphasis(&runtime->preemp_r, r);
+	}
+
+	l = tanhf(l * config->volumes.drive);
+	r = tanhf(r * config->volumes.drive);
+	float mid  = (l + r) * config->volumes.softclip_norm;
+	float side = (l - r) * config->volumes.softclip_norm;
+
+	if (res) res->audio_level = mid;
+
+	float audio;
+	float mpx = stereo_encode(&runtime->stencode, config->stereo, mid, side, &audio);
+
+	// RDS
+	{
+		float clock = get_oscillator_cos_multiplier_ni(&runtime->osc, 1.0f);
+		for (uint8_t stream = 0; stream < config->rds_streams; stream++) {
+			if (oscillator_did_cycle(&runtime->osc, stream_shift[stream], &prev_shifted_phase[stream])) {
+				uint8_t bit;
+				if (bit_ring_read1(&runtime->rds_bitring[stream], &bit)) runtime->rds_last_bit[stream] = bit;
+				runtime->rds_symbol[stream] = runtime->rds_last_bit[stream] ? 1.0f : -1.0f;
+			}
+
+			uint8_t osc_stream = 12 + stream;
+			if (osc_stream >= 13) osc_stream++; // 61.75 kHz slot is skipped (IEC 62106-1, 4.7)
+
+			float shaped;
+			float carrier = get_oscillator_cos_multiplier_ni(&runtime->osc, osc_stream * 4.0f);
+			iirfilt_rrrf_execute(runtime->rds_filter[stream], clock * runtime->rds_symbol[stream], &shaped);
+			mpx += shaped * carrier * config->volumes.rds;
+		}
+	}
+
+	float unused_power;
+	mpx = bs412_compress(&runtime->bs412, audio, mpx + mpx_in, res ? &res->mpx_power : &unused_power);
+
+	if (res) res->bs412_gain = runtime->bs412.gain;
+
+	return tanhf(mpx) * config->master_volume;
+}
+
 int run_fm95(FM95_Config* config, FM95_Runtime* runtime, FM95_ResultBox* resultbox) {
 	FM95_RunResult result;
 	memset(&result, 0, sizeof(result));
@@ -236,123 +314,20 @@ int run_fm95(FM95_Config* config, FM95_Runtime* runtime, FM95_ResultBox* resultb
 			mpx_on = 0;
 		}
 
-		for(uint32_t i = 0; i < BUFFER_SIZE - 1;) {
-			advance_oscillator(&runtime->osc);
-			
-			l = audio_stereo_input[2*i]*config->audio_preamp;
-			r = audio_stereo_input[2*i+1]*config->audio_preamp;
-
-			if(config->agc_max != 0.0) {
-				float agc_gain = process_agc(&runtime->agc, 0.5f * (l + r));
-				l *= agc_gain;
-				r *= agc_gain;
-			}
-
-			if(config->lpf_cutoff != 0) {
-				iirfilt_rrrf_execute(runtime->lpf_l, l, &l);
-				iirfilt_rrrf_execute(runtime->lpf_r, r, &r);
-			}
-	
-			if(config->preemphasis != 0) {
-				l = apply_preemphasis(&runtime->preemp_l, l);
-				r = apply_preemphasis(&runtime->preemp_r, r);
-			}
-
-			l = tanhf(l * config->volumes.drive);
-			r = tanhf(r * config->volumes.drive);
-			mid = (l + r) * config->volumes.softclip_norm;
-			side = (l - r) * config->volumes.softclip_norm;
-
-			mpx = stereo_encode(&runtime->stencode, config->stereo, mid, side, &audio);
-
-			{
-				float clock = get_oscillator_cos_multiplier_ni(&runtime->osc, 1.0f);
-				for (uint8_t stream = 0; stream < config->rds_streams; stream++) {
-					// Diffrential encoding should be done at the client
-					if (oscillator_did_cycle(&runtime->osc, stream_shift[stream], &prev_shifted_phase[stream])) {
-						uint8_t bit;
-						if (bit_ring_read1(&runtime->rds_bitring[stream], &bit)) runtime->rds_last_bit[stream] = bit;
-						runtime->rds_symbol[stream] = runtime->rds_last_bit[stream] ? 1.0f : -1.0f;
-					}
-
-					uint8_t osc_stream = 12 + stream;
-					if (osc_stream >= 13) osc_stream++; // "The first position, 61,75 kHz is not used to protect the basic subcarrier of 57 kHz on existing receivers." - IEC 62106-1, 4.7
-
-					float shaped;
-					float carrier = get_oscillator_cos_multiplier_ni(&runtime->osc, osc_stream * 4.0f);
-					iirfilt_rrrf_execute(runtime->rds_filter[stream], clock * runtime->rds_symbol[stream], &shaped);
-					mpx += shaped * carrier * config->volumes.rds;
-				}
-			}
-
-			mpx = bs412_compress(&runtime->bs412, audio, mpx+mpx_in[i], &mpx_power);
-
-			output[i++] = tanhf(mpx)*config->master_volume; // Ensure peak deviation of 75 khz, assuming we're calibrated correctly
+		for (uint32_t i = 0; i < BUFFER_SIZE - 1; i++) {
+			output[i] = process_sample(config, runtime,
+				audio_stereo_input[2*i], audio_stereo_input[2*i+1],
+				mpx_in[i], prev_shifted_phase, NULL);
 		}
 
-		// This repeats - why? to save that little bit of performance! Running expensive if statement whether to save result or not is a lot of processing time, so, how about not doing the if statements?
-
-		advance_oscillator(&runtime->osc);
-			
-		l = audio_stereo_input[2*BUFFER_SIZE-2]*config->audio_preamp;
-		r = audio_stereo_input[2*BUFFER_SIZE-1]*config->audio_preamp;
-
-		mid = 0.5f * (l + r);
-		result.input_level = mid;
-
-		if(config->agc_max != 0.0) {
-			float agc_gain = process_agc(&runtime->agc, mid);
-			l *= agc_gain;
-			r *= agc_gain;
-			result.agc_gain = agc_gain;
-		} else result.agc_gain = 0.0f;
-
-		if(config->lpf_cutoff != 0) {
-			iirfilt_rrrf_execute(runtime->lpf_l, l, &l);
-			iirfilt_rrrf_execute(runtime->lpf_r, r, &r);
-		}
-
-		if(config->preemphasis != 0) {
-			l = apply_preemphasis(&runtime->preemp_l, l);
-			r = apply_preemphasis(&runtime->preemp_r, r);
-		}
-
-		l = tanhf(l * config->volumes.drive);
-		r = tanhf(r * config->volumes.drive);
-		mid = (l + r) * config->volumes.softclip_norm;
-		side = (l - r) * config->volumes.softclip_norm;
-		result.audio_level = mid;
-
-		mpx = stereo_encode(&runtime->stencode, config->stereo, mid, side, &audio);
-
-		{
-			float clock = get_oscillator_cos_multiplier_ni(&runtime->osc, 1.0f);
-			for (uint8_t stream = 0; stream < config->rds_streams; stream++) {
-				// Diffrential encoding should be done at the client
-				if (oscillator_did_cycle(&runtime->osc, stream_shift[stream], &prev_shifted_phase[stream])) {
-					uint8_t bit;
-					if (bit_ring_read1(&runtime->rds_bitring[stream], &bit)) runtime->rds_last_bit[stream] = bit;
-					runtime->rds_symbol[stream] = runtime->rds_last_bit[stream] ? 1.0f : -1.0f;
-				}
-
-				uint8_t osc_stream = 12 + stream;
-				if (osc_stream >= 13) osc_stream++; // "The first position, 61,75 kHz is not used to protect the basic subcarrier of 57 kHz on existing receivers." - IEC 62106-1, 4.7
-
-				float shaped;
-				float carrier = get_oscillator_cos_multiplier_ni(&runtime->osc, osc_stream * 4.0f);
-				iirfilt_rrrf_execute(runtime->rds_filter[stream], clock * runtime->rds_symbol[stream], &shaped);
-				mpx += shaped * carrier * config->volumes.rds;
-			}
-		}
-
-		mpx = bs412_compress(&runtime->bs412, audio, mpx+mpx_in[BUFFER_SIZE-1], &result.mpx_power);
-		result.bs412_gain = runtime->bs412.gain;
+		// Last sample of the buffer: capture telemetry
+		output[BUFFER_SIZE-1] = process_sample(config, runtime,
+			audio_stereo_input[2*BUFFER_SIZE-2], audio_stereo_input[2*BUFFER_SIZE-1],
+			mpx_in[BUFFER_SIZE-1], prev_shifted_phase, &result);
 
 		result.count++;
 		publish_result(resultbox, &result);
 
-		output[BUFFER_SIZE-1] = tanhf(mpx)*config->master_volume; // Ensure peak deviation of 75 khz (or the set deviation), assuming we're calibrated correctly
-		
 		_pulse_output;
 	}
 
@@ -416,20 +391,15 @@ static int config_handler(void* user, const char* section, const char* name, con
 	else if(MATCH("fm95", "bs412_max")) pconfig->bs412_max = strtof(value, NULL);
 	else if(MATCH("fm95", "bs412_gate")) pconfig->bs412_gate = strtof(value, NULL);
 	else if(MATCH("fm95", "bs412_knee")) pconfig->bs412_knee = strtof(value, NULL);
-	else if(MATCH("fm95", "bs412_strenght")) pconfig->bs412_strenght = strtof(value, NULL);
+	else if(MATCH("fm95", "bs412_strenght")) pconfig->bs412_strength = strtof(value, NULL); // Oops
+	else if(MATCH("fm95", "bs412_strength")) pconfig->bs412_strength = strtof(value, NULL);
 	else if(MATCH("advanced", "lpf_order")) pconfig->lpf_order = atoi(value);
 	else if(MATCH("advanced", "rds_lpf_order")) pconfig->rds_lpf_order = atoi(value);
 	else if(MATCH("advanced", "stereo_ssb")) pconfig->stereo_ssb = atoi(value);
 	else if(MATCH("advanced", "preemp_unity")) pconfig->preemp_unity_freq = strtof(value, NULL);
 	else if(MATCH("advanced", "sample_rate")) pconfig->sample_rate = atoi(value);
-	else if(MATCH("advanced", "lpf_cutoff")) {
-		pconfig->lpf_cutoff = strtof(value, NULL);
-		if(pconfig->lpf_cutoff > (pconfig->sample_rate * 0.5)) {
-			pconfig->lpf_cutoff = (pconfig->sample_rate * 0.5);
-			fprintf(stderr, "LPF cutoff over niquist.\n");
-			return 0;
-		}
-	} else if(MATCH("advanced", "headroom")) pconfig->volumes.headroom = strtof(value, NULL);
+	else if(MATCH("advanced", "lpf_cutoff")) pconfig->lpf_cutoff = strtof(value, NULL);
+	else if(MATCH("advanced", "headroom")) pconfig->volumes.headroom = strtof(value, NULL);
 	else if(MATCH("advanced", "drive")) {
 		pconfig->volumes.drive = strtof(value, NULL);
 		pconfig->volumes.softclip_norm = pconfig->volumes.makeup / tanhf(pconfig->volumes.drive) / 2.0f;
@@ -511,8 +481,8 @@ void init_runtime(FM95_Runtime* runtime, const FM95_Config config) {
 	}
 
 	if(runtime->bs412.init == true && (runtime->bs412.sample_rate == config.sample_rate)) {
-		reinit_bs412(&runtime->bs412, config.mpx_deviation, config.mpx_power, config.bs412_attack, config.bs412_release, config.bs412_max, config.bs412_gate, config.bs412_knee, config.bs412_strenght);
-	} else init_bs412(&runtime->bs412, config.mpx_deviation, config.mpx_power, config.bs412_attack, config.bs412_release, config.bs412_max, config.bs412_gate, config.bs412_knee, config.bs412_strenght, config.sample_rate);
+		reinit_bs412(&runtime->bs412, config.mpx_deviation, config.mpx_power, config.bs412_attack, config.bs412_release, config.bs412_max, config.bs412_gate, config.bs412_knee, config.bs412_strength);
+	} else init_bs412(&runtime->bs412, config.mpx_deviation, config.mpx_power, config.bs412_attack, config.bs412_release, config.bs412_max, config.bs412_gate, config.bs412_knee, config.bs412_strength, config.sample_rate);
 	init_stereo_encoder(&runtime->stencode, config.stereo_ssb, 16.0f, &runtime->osc, config.volumes.audio, config.volumes.pilot);
 
 	float last_gain = 0.0f;
@@ -753,7 +723,7 @@ int main(int argc, char **argv) {
 		.bs412_max = 2.82f,
 		.bs412_gate = -20.0f,
 		.bs412_knee = 4.0f,
-		.bs412_strenght = 1.0f,
+		.bs412_strength = 1.0f,
 		.lpf_cutoff = 15000.0f,
 	};
 
@@ -775,11 +745,11 @@ int main(int argc, char **argv) {
 	}
 
 	if(dv_names.input[0] == 0) {
-		printf("Please set the input device");
+		printf("Please set the input device\n");
 		return 1;
 	}
 	if(dv_names.output[0] == 0) {
-		printf("Please set the output device");
+		printf("Please set the output device\n");
 		return 1;
 	}
 
@@ -815,6 +785,7 @@ int main(int argc, char **argv) {
 		.run_result = &runres
 	};
 
+	// FZ stuff - this helps cpu usage, working on very small numbers is hard so we don't work on them instead
 	#if defined(__aarch64__)
 	{
 		uint64_t fpcr;

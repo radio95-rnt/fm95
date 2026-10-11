@@ -1,7 +1,7 @@
 #include "bs412.h"
 
 #define BS412_TIME 60
-#define ENABLE_TIME 45
+#define ENABLE_TIME 30
 #define CLAMP(x, lo, hi) (((x) < (lo)) ? (lo) : ((x) > (hi) ? (hi) : (x)))
 
 inline float power_to_dbr(float power, float ref) {
@@ -26,13 +26,14 @@ void init_bs412(BS412Compressor* comp, uint32_t mpx_deviation, float target_powe
 	comp->knee_db = knee_db; // e.g. 6.0f — width in dB around target on each side
 	comp->init = true;
 	comp->strenght = strenght;
+	comp->sample_counter = 0;
 	#ifdef BS412_DEBUG
 	debug_printf("Initialized MPX power measurement with sample rate: %d\n", sample_rate);
 	#endif
 }
 
 void reinit_bs412(BS412Compressor* comp, uint32_t mpx_deviation, float target_power, float attack, float release, float max_gain, float gate, float knee_db, float strenght) {
-	comp->reference = (19000.0f / mpx_deviation) * (19000.0f / mpx_deviation);
+	comp->reference = (19000.0f / mpx_deviation) * ((19000.0f / mpx_deviation) * 0.5f);
 	comp->target = comp->reference * powf(10.0f, target_power / 10.0f);
 	comp->target_dbr = power_to_dbr(comp->target, comp->reference);
 	comp->gate_threshold = comp->reference * powf(10.0f, gate / 10.0f);
