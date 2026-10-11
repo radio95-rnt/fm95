@@ -288,19 +288,13 @@ int run_fm95(FM95_Config* config, FM95_Runtime* runtime, FM95_ResultBox* resultb
 		return 0;
 	}
 
-	float mpx_power; // This is not used - it is just to consume bs412's mpx output value
-
 	float audio_stereo_input[BUFFER_SIZE*2]; // Stereo
 
 	float mpx_in[BUFFER_SIZE] = {0};
 
 	bool mpx_on = config->options.mpx_on;
-	float mpx = 0.0f;
-	float audio = 0.0f;
-	float l, r, mid, side;
 
 	// Stream shift! Read 4.10 of IEC62106-1, something about decreasing deviation?
-	static const float stream_shift[4] = {0.0f, (float)M_PI, (float)M_PI_2, (float)(3.0 * M_PI_2)};
 	static float prev_shifted_phase[4] = {0.0f, (float)M_PI, (float)M_PI_2, (float)(3.0 * M_PI_2)};
 
 	while (to_run) {
