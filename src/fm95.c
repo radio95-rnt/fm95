@@ -3,6 +3,7 @@
 #include <liquid/liquid.h>
 #include "ini.h"
 #include <stdbool.h>
+#include <stdatomic.h>
 
 #define DEFAULT_INI_PATH "/etc/fm95/fm95.conf"
 
@@ -105,7 +106,32 @@ typedef struct {
 	float agc_gain;
 	float input_level;
 	float audio_level;
+	uint32_t count;
 } FM95_RunResult;
+
+typedef struct {
+    atomic_uint seq;
+    FM95_RunResult data;
+} FM95_ResultBox;
+
+static void publish_result(FM95_ResultBox *box, const FM95_RunResult *local) {
+    unsigned s = atomic_load_explicit(&box->seq, memory_order_relaxed);
+    atomic_store_explicit(&box->seq, s + 1, memory_order_relaxed); // odd = writing
+    atomic_thread_fence(memory_order_release);
+    box->data = *local;
+    atomic_store_explicit(&box->seq, s + 2, memory_order_release); // even = stable
+}
+static FM95_RunResult snapshot_result(FM95_ResultBox *box) {
+    FM95_RunResult copy;
+    unsigned s1, s2;
+    do {
+        s1 = atomic_load_explicit(&box->seq, memory_order_acquire);
+        copy = box->data;
+        atomic_thread_fence(memory_order_acquire);
+        s2 = atomic_load_explicit(&box->seq, memory_order_relaxed);
+    } while ((s1 & 1) || s1 != s2);
+    return copy;
+}
 
 static inline bool compare_dvs(const FM95_DeviceNames *a, const FM95_DeviceNames *b) {
     return strcmp(a->input, b->input) == 0 && strcmp(a->output, b->output) == 0 && strcmp(a->mpx, b->mpx) == 0;
@@ -163,22 +189,28 @@ if((pulse_error = write_PulseOutputDevice(&runtime->output_device, output, sizeo
 	break; \
 }
 
-int run_fm95(FM95_Config* config, FM95_Runtime* runtime, FM95_RunResult* result) {
+int run_fm95(FM95_Config* config, FM95_Runtime* runtime, FM95_ResultBox* resultbox) {
+	FM95_RunResult result;
+	memset(&result, 0, sizeof(result));
+
 	float output[BUFFER_SIZE];
 
 	int pulse_error;
 
 	if(config->calibration != 0) {
+		float bs412test = 19000/config->mpx_deviation;
 		while(to_run) {
 			for (uint32_t i = 0; i < BUFFER_SIZE; i++) {
 				float sample = get_oscillator_sin_sample(&runtime->osc);
 				if(config->calibration == 2) sample = (sample > 0.0f) ? 1.0f : -1.0f; // Sine wave to square wave filter, 50% duty cycle
-				else if(config->calibration == 3) sample *= (19000/config->mpx_deviation);
+				else if(config->calibration == 3) sample *= bs412test;
 				output[i] = sample*config->master_volume;
 			} _pulse_output;
 		}
 		return 0;
 	}
+
+	float mpx_power; // This is not used - it is just to consume bs412's mpx output value
 
 	float audio_stereo_input[BUFFER_SIZE*2]; // Stereo
 
@@ -188,8 +220,8 @@ int run_fm95(FM95_Config* config, FM95_Runtime* runtime, FM95_RunResult* result)
 	float mpx = 0.0f;
 	float audio = 0.0f;
 	float l, r, mid, side;
-	float mod_l, mod_r;
 
+	// Stream shift! Read 4.10 of IEC62106-1, something about decreasing deviation?
 	static const float stream_shift[4] = {0.0f, (float)M_PI, (float)M_PI_2, (float)(3.0 * M_PI_2)};
 	static float prev_shifted_phase[4] = {0.0f, (float)M_PI, (float)M_PI_2, (float)(3.0 * M_PI_2)};
 
@@ -217,25 +249,26 @@ int run_fm95(FM95_Config* config, FM95_Runtime* runtime, FM95_RunResult* result)
 			}
 
 			if(config->lpf_cutoff != 0) {
-				iirfilt_rrrf_execute(runtime->lpf_l, l, &mod_l);
-				iirfilt_rrrf_execute(runtime->lpf_r, r, &mod_r);
+				iirfilt_rrrf_execute(runtime->lpf_l, l, &l);
+				iirfilt_rrrf_execute(runtime->lpf_r, r, &r);
 			}
 	
 			if(config->preemphasis != 0) {
-				mod_l = apply_preemphasis(&runtime->preemp_l, mod_l);
-				mod_r = apply_preemphasis(&runtime->preemp_r, mod_r);
+				l = apply_preemphasis(&runtime->preemp_l, l);
+				r = apply_preemphasis(&runtime->preemp_r, r);
 			}
 
-			mod_l = tanhf(mod_l * config->volumes.drive);
-			mod_r = tanhf(mod_r * config->volumes.drive);
-			mid = (mod_l + mod_r) * config->volumes.softclip_norm;
-			side = (mod_l - mod_r) * config->volumes.softclip_norm;
+			l = tanhf(l * config->volumes.drive);
+			r = tanhf(r * config->volumes.drive);
+			mid = (l + r) * config->volumes.softclip_norm;
+			side = (l - r) * config->volumes.softclip_norm;
 
 			mpx = stereo_encode(&runtime->stencode, config->stereo, mid, side, &audio);
 
 			{
 				float clock = get_oscillator_cos_multiplier_ni(&runtime->osc, 1.0f);
 				for (uint8_t stream = 0; stream < config->rds_streams; stream++) {
+					// Diffrential encoding should be done at the client
 					if (oscillator_did_cycle(&runtime->osc, stream_shift[stream], &prev_shifted_phase[stream])) {
 						uint8_t bit;
 						if (bit_ring_read1(&runtime->rds_bitring[stream], &bit)) runtime->rds_last_bit[stream] = bit;
@@ -243,7 +276,7 @@ int run_fm95(FM95_Config* config, FM95_Runtime* runtime, FM95_RunResult* result)
 					}
 
 					uint8_t osc_stream = 12 + stream;
-					if (osc_stream >= 13) osc_stream++; // "The first position, 61,75 kHz is not used to protect the basic subcarrier of 57 kHz on existing receivers." - IEC 62106-1
+					if (osc_stream >= 13) osc_stream++; // "The first position, 61,75 kHz is not used to protect the basic subcarrier of 57 kHz on existing receivers." - IEC 62106-1, 4.7
 
 					float shaped;
 					float carrier = get_oscillator_cos_multiplier_ni(&runtime->osc, osc_stream * 4.0f);
@@ -252,7 +285,7 @@ int run_fm95(FM95_Config* config, FM95_Runtime* runtime, FM95_RunResult* result)
 				}
 			}
 
-			mpx = bs412_compress(&runtime->bs412, audio, mpx+mpx_in[i], &result->mpx_power);
+			mpx = bs412_compress(&runtime->bs412, audio, mpx+mpx_in[i], &mpx_power);
 
 			output[i++] = tanhf(mpx)*config->master_volume; // Ensure peak deviation of 75 khz, assuming we're calibrated correctly
 		}
@@ -265,36 +298,37 @@ int run_fm95(FM95_Config* config, FM95_Runtime* runtime, FM95_RunResult* result)
 		r = audio_stereo_input[2*BUFFER_SIZE-1]*config->audio_preamp;
 
 		mid = 0.5f * (l + r);
-		result->input_level = mid;
+		result.input_level = mid;
 
 		if(config->agc_max != 0.0) {
 			float agc_gain = process_agc(&runtime->agc, mid);
 			l *= agc_gain;
 			r *= agc_gain;
-			result->agc_gain = agc_gain;
-		} else result->agc_gain = 0.0f;
+			result.agc_gain = agc_gain;
+		} else result.agc_gain = 0.0f;
 
 		if(config->lpf_cutoff != 0) {
-			iirfilt_rrrf_execute(runtime->lpf_l, l, &mod_l);
-			iirfilt_rrrf_execute(runtime->lpf_r, r, &mod_r);
+			iirfilt_rrrf_execute(runtime->lpf_l, l, &l);
+			iirfilt_rrrf_execute(runtime->lpf_r, r, &r);
 		}
 
 		if(config->preemphasis != 0) {
-			mod_l = apply_preemphasis(&runtime->preemp_l, mod_l);
-			mod_r = apply_preemphasis(&runtime->preemp_r, mod_r);
+			l = apply_preemphasis(&runtime->preemp_l, l);
+			r = apply_preemphasis(&runtime->preemp_r, r);
 		}
 
-		mod_l = tanhf(mod_l * config->volumes.drive);
-		mod_r = tanhf(mod_r * config->volumes.drive);
-		mid = (mod_l + mod_r) * config->volumes.softclip_norm;
-		side = (mod_l - mod_r) * config->volumes.softclip_norm;
-		result->audio_level = mid;
+		l = tanhf(l * config->volumes.drive);
+		r = tanhf(r * config->volumes.drive);
+		mid = (l + r) * config->volumes.softclip_norm;
+		side = (l - r) * config->volumes.softclip_norm;
+		result.audio_level = mid;
 
 		mpx = stereo_encode(&runtime->stencode, config->stereo, mid, side, &audio);
 
 		{
 			float clock = get_oscillator_cos_multiplier_ni(&runtime->osc, 1.0f);
 			for (uint8_t stream = 0; stream < config->rds_streams; stream++) {
+				// Diffrential encoding should be done at the client
 				if (oscillator_did_cycle(&runtime->osc, stream_shift[stream], &prev_shifted_phase[stream])) {
 					uint8_t bit;
 					if (bit_ring_read1(&runtime->rds_bitring[stream], &bit)) runtime->rds_last_bit[stream] = bit;
@@ -302,7 +336,7 @@ int run_fm95(FM95_Config* config, FM95_Runtime* runtime, FM95_RunResult* result)
 				}
 
 				uint8_t osc_stream = 12 + stream;
-				if (osc_stream >= 13) osc_stream++; // "The first position, 61,75 kHz is not used to protect the basic subcarrier of 57 kHz on existing receivers." - IEC 62106-1
+				if (osc_stream >= 13) osc_stream++; // "The first position, 61,75 kHz is not used to protect the basic subcarrier of 57 kHz on existing receivers." - IEC 62106-1, 4.7
 
 				float shaped;
 				float carrier = get_oscillator_cos_multiplier_ni(&runtime->osc, osc_stream * 4.0f);
@@ -311,8 +345,11 @@ int run_fm95(FM95_Config* config, FM95_Runtime* runtime, FM95_RunResult* result)
 			}
 		}
 
-		mpx = bs412_compress(&runtime->bs412, audio, mpx+mpx_in[BUFFER_SIZE-1], &result->mpx_power);
-		result->bs412_gain = runtime->bs412.gain;
+		mpx = bs412_compress(&runtime->bs412, audio, mpx+mpx_in[BUFFER_SIZE-1], &result.mpx_power);
+		result.bs412_gain = runtime->bs412.gain;
+
+		result.count++;
+		publish_result(resultbox, &result);
 
 		output[BUFFER_SIZE-1] = tanhf(mpx)*config->master_volume; // Ensure peak deviation of 75 khz (or the set deviation), assuming we're calibrated correctly
 		
@@ -487,10 +524,11 @@ void init_runtime(FM95_Runtime* runtime, const FM95_Config config) {
 	}
 
 	for(int i = 0; i < 4; i++) {
-		bit_ring_init(&runtime->rds_bitring[i], 3328); // 32 groups - aka 2.802526315789474 seconds
+		bit_ring_init(&runtime->rds_bitring[i], 2496); // 24 groups - aka 2.1018947368421053 seconds
 		runtime->rds_symbol[i] = -1.0f;
 		runtime->rds_last_bit[i] = 0;
 
+		// Butterworth SHOULD match the filter described in IEC62106-1 Figure 4( or 5?) - don't know if it does, but what i do know that it works
 		runtime->rds_filter[i] = iirfilt_rrrf_create_prototype(LIQUID_IIRDES_BUTTER, LIQUID_IIRDES_LOWPASS, LIQUID_IIRDES_SOS, config.rds_lpf_order, (2400.0f/config.sample_rate), 0.0f, 1.0f, 30.0f);
 	}
 }
@@ -500,7 +538,7 @@ void init_runtime(FM95_Runtime* runtime, const FM95_Config config) {
 typedef struct {
 	FM95_Runtime* runtime;
 	FM95_Config* config;
-	FM95_RunResult* run_result;
+	FM95_ResultBox* run_result;
 } FM95_Data;
 
 static void *handle_client(ipc_client_arg_t *arg) {
@@ -634,6 +672,10 @@ static void *handle_client(ipc_client_arg_t *arg) {
 			case 113:
 				// Set RDS streams
 				memcpy(&bval, buf + 1, 1);
+				if(bval > 4) {
+					reply = 2;
+					break;
+				}
 				if(data->config->rds_streams != bval) {
 					data->config->rds_streams = bval;
 					data->config->volumes.audio = calculate_sharedaudio_volume(data->config->volumes, bval);
@@ -642,18 +684,26 @@ static void *handle_client(ipc_client_arg_t *arg) {
 				break;
 			case 0xfe:
 				// Fetch config
+				send(fd, buf, 1, 0);
         		send(fd, data->config, sizeof(FM95_Config), 0);
+				reply = 0xfe;
 				break;
-			case 0xff:
+			case 0xff: {
 				// Fetch data
-        		send(fd, data->run_result, sizeof(FM95_RunResult), 0);
+				FM95_RunResult res = snapshot_result(data->run_result);
+				send(fd, buf, 1, 0);
+        		send(fd, &res, sizeof(FM95_RunResult), 0);
+				reply = 0xfe;
 				break;
-			default:
+			} default:
 				reply = 1; // Unknown command
 				break;
 		}
 
-        if(reply != 0xff) send(fd, &reply, 1, 0);
+		if(reply != 0xfe) {
+			send(fd, buf, 1, 0);
+			if(reply != 0xff) send(fd, &reply, 1, 0);
+		}
     }
 
     printf("[client fd=%d] disconnected\n", fd);
@@ -662,12 +712,12 @@ static void *handle_client(ipc_client_arg_t *arg) {
 }
 
 int main(int argc, char **argv) {
-	printf("fm95 (an FM Processor by radio95)\n");
+	printf("fm95 (a FM Processor by radio95)\n");
 
 	FM95_Config config = {
 		.volumes = {
 			.pilot = 0.09f,
-			.rds = 0.045f,
+			.rds = 0.045f, // IEC62106-1 says optimal is 2 khz of deviation, aka 2.66667% - feels a little... low
 			.headroom = 0.05f,
 			.drive = 1.0f,
 			.makeup = 1.0f,
@@ -680,7 +730,7 @@ int main(int argc, char **argv) {
 
 		.preemphasis = 50, // Europe, the "freedomers" use 75µs
 		.calibration = 0, // Off
-		.mpx_power = 3.0f, // dbr, this is for BS412, simplest bs412
+		.mpx_power = 0.0f, // dbr, this is for BS412, simplest bs412
 		.mpx_deviation = 75000.0f, // for BS412, this is what deviation does the compressor see as peak, so if i set here 150 khz, then the compressor will act as if it was two times louder
 		.audio_deviation = 75000.0f, // another way to set the volume
 		.master_volume = 1.0f, // Volume of everything combined, for calibration
@@ -757,7 +807,7 @@ int main(int argc, char **argv) {
 
 	init_runtime(&runtime, config);
 
-	FM95_RunResult runres;
+	FM95_ResultBox runres;
 	memset(&runres, 0, sizeof(runres));
 	FM95_Data fmdata = {
 		.config = &config,
