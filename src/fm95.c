@@ -686,23 +686,23 @@ static void *handle_client(ipc_client_arg_t *arg) {
 				// Fetch config
 				send(fd, buf, 1, 0);
         		send(fd, data->config, sizeof(FM95_Config), 0);
-				reply = 0xfe;
+				reply = 0xff;
 				break;
 			case 0xff: {
 				// Fetch data
 				FM95_RunResult res = snapshot_result(data->run_result);
 				send(fd, buf, 1, 0);
         		send(fd, &res, sizeof(FM95_RunResult), 0);
-				reply = 0xfe;
+				reply = 0xff;
 				break;
 			} default:
 				reply = 1; // Unknown command
 				break;
 		}
 
-		if(reply != 0xfe) {
-			send(fd, buf, 1, 0);
-			if(reply != 0xff) send(fd, &reply, 1, 0);
+		if (reply != 0xff) {
+			uint8_t out[2] = { buf[0], reply };
+			send(fd, out, 2, 0);
 		}
     }
 
