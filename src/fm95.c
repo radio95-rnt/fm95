@@ -648,17 +648,20 @@ static void *handle_client(ipc_client_arg_t *arg) {
 				break;
 			case 0xfe:
 				// Fetch config
-				send(fd, buf, 1, 0);
-        		send(fd, data->config, sizeof(FM95_Config), 0);
+    			uint8_t out[1 + sizeof(FM95_Config)];
+    			out[0] = 0xfe;
+    			memcpy(out + 1, data->config, sizeof(FM95_Config));
+    			send(fd, out, sizeof(out), 0);
 				reply = 0xff;
 				break;
 			case 0xff: {
-				// Fetch data
-				FM95_RunResult res = snapshot_result(data->run_result);
-				send(fd, buf, 1, 0);
-        		send(fd, &res, sizeof(FM95_RunResult), 0);
-				reply = 0xff;
-				break;
+    			FM95_RunResult res = snapshot_result(data->run_result);
+    			uint8_t out[1 + sizeof(res)];
+    			out[0] = 0xff;
+    			memcpy(out + 1, &res, sizeof(res));
+    			send(fd, out, sizeof(out), 0);
+    			reply = 0xff;
+    			break;
 			} default:
 				reply = 1; // Unknown command
 				break;
