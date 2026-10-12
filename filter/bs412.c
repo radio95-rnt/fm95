@@ -61,36 +61,40 @@ float bs412_compress(BS412Compressor* comp, float audio, float sample_mpx, float
 	}
 
 	if(comp->can_compress == 0 && comp->second_counter > ENABLE_TIME) {
-		#ifdef BS412_DEBUG
-		debug_printf("Can compress.\n");
-		#endif
 		comp->can_compress = 1;
 		comp->second_counter = 0;
 	}
 
 	float safe_power = fmaxf(comp->avg_power, 1e-12f);
-	float temp_gain = sqrtf(comp->target / safe_power);
-	float target_gain = powf(temp_gain, comp->strenght);
-	if(isnan(target_gain)) target_gain = temp_gain;
 
-	float level_dbr = power_to_dbr(comp->avg_power, comp->reference);
+	float level_dbr = power_to_dbr(safe_power, comp->reference);
 	float half_knee = comp->knee_db * 0.5f;
-	float dist = level_dbr - comp->target_dbr; // negative = below target, positive = above
+	float dist = level_dbr - comp->target_dbr;
+
+	// Required gain in dB (power ratio -> amplitude dB = 0.5 * 10*log10)
+	float gain_db = comp->strenght * (comp->target_dbr - level_dbr) * 0.5f;
+
+	// Limit to the gain range actually allowed
+	float max_db = 20.0f * log10f(fmaxf(comp->max_gain, 0.01f));
+	// 20.0f * log10f(0.01f) = -40.0f
+	gain_db = CLAMP(gain_db, -40.0f, max_db);
 
 	float knee_blend;
-	if (dist <= -half_knee) knee_blend = 0.0f; // well below target — don't pull gain toward target
-	else if (dist >= half_knee) knee_blend = 1.0f; // well above target — full compression
+	if (dist <= -half_knee) knee_blend = 0.0f;
+	else if (dist >= half_knee) knee_blend = 1.0f;
 	else {
-		// Smooth cubic ramp: 0→1 over the knee width
-		float t = (dist + half_knee) / comp->knee_db; // 0..1
-		knee_blend = t * t * (3.0f - 2.0f * t);       // smoothstep
+		float t = (dist + half_knee) / comp->knee_db;
+		knee_blend = t * t * (3.0f - 2.0f * t);
 	}
 
-	float blended_target = 1.0f + knee_blend * (target_gain - 1.0f);
+	// Blend in the dB domain: always finite
+	float blended_target = powf(10.0f, (knee_blend * gain_db) / 20.0f);
 
 	float coeff = (comp->avg_power > comp->target) ? comp->attack : comp->release;
 	comp->gain = coeff * comp->gain + (1.0f - coeff) * blended_target;
+	if (!isfinite(comp->gain)) comp->gain = 1.0f;
 	comp->gain = CLAMP(comp->gain, 0.01f, comp->max_gain);
+	if (!isfinite(comp->avg_power)) comp->avg_power = 0.0f;
 
 	comp->sample_counter++;
 
