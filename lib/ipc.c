@@ -6,9 +6,9 @@
 #include <pthread.h>
 #include <sys/un.h>
 #include <fcntl.h>
+#include <poll.h>
 
 #define SD_LISTEN_FDS_START 3
-
 
 static int get_systemd_socket(void) {
     const char *pid_s = getenv("LISTEN_PID");
@@ -64,11 +64,12 @@ static void *listener_thread(void *arg) {
     ipc_ctx_t *ctx = (ipc_ctx_t *)arg;
 
     while (ctx->running) {
-        struct sockaddr_un peer;
-        socklen_t peer_len = sizeof(peer);
+        struct pollfd pfd = { .fd = ctx->server_fd, .events = POLLIN };
+        int r = poll(&pfd, 1, 50);
+        if (r < 0) { if (errno == EINTR) continue; break; }
+        if (r == 0) continue;
 
-        int client_fd = accept(ctx->server_fd,
-                               (struct sockaddr *)&peer, &peer_len);
+        int client_fd = accept(ctx->server_fd, NULL, NULL);
         if (client_fd < 0) {
             if (errno == EINVAL || errno == EBADF) break; /* shutting down */
             if (errno == EINTR)                   continue;
@@ -130,10 +131,11 @@ int create_ipc(ipc_ctx_t *ctx, ipc_client_fn handler, const char *socket_path, v
 
 void destroy_ipc(ipc_ctx_t *ctx) {
     ctx->running = 0;
-    shutdown(ctx->server_fd, SHUT_RDWR);
+    pthread_join(ctx->_tid, NULL);           /* join first, then close */
+    if (!ctx->socket_activated) {
+        shutdown(ctx->server_fd, SHUT_RDWR); /* harmless here, we own it; optional */
+        unlink(ctx->socket_path);
+    }
     close(ctx->server_fd);
-    if (!ctx->socket_activated) unlink(ctx->socket_path);  /* systemd owns it otherwise */
-    pthread_join(ctx->_tid, NULL);
     free(ctx->socket_path);
-    printf("[ipc] shut down\n");
 }
