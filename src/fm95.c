@@ -6,6 +6,7 @@
 #include <stdatomic.h>
 
 #define DEFAULT_INI_PATH "/etc/fm95/fm95.conf"
+#define DEFAULT_SOCKET_PATH "/etc/fm95/ctl.socket"
 
 #define buffer_maxlength 192000
 #define buffer_tlength_fragsize -1
@@ -57,6 +58,7 @@ typedef struct {
 	uint32_t sample_rate;
 
 	char ini_config_path[64];
+	char socket_config_path[64];
 
 	uint8_t lpf_order;
 	uint8_t rds_lpf_order;
@@ -157,9 +159,11 @@ static void reload(int signum) {
 void show_help(char *name) {
 	printf(
 		"Usage: \t%s\n"
-		"\t-c,--config\tOverride the default config path (%s)\n",
+		"\t-c,--config\tOverride the default config path (%s)\n"
+		"\t-s,--socket\tOverride the default socket path (%s)\n",
 		name,
-		DEFAULT_INI_PATH
+		DEFAULT_INI_PATH,
+		DEFAULT_SOCKET_PATH
 	);
 }
 
@@ -330,9 +334,10 @@ int run_fm95(FM95_Config* config, FM95_Runtime* runtime, FM95_ResultBox* resultb
 
 int parse_arguments(int argc, char **argv, FM95_Config* config) {
 	int opt;
-	const char *short_opt = "c:h";
+	const char *short_opt = "c:s:h";
 	struct option long_opt[] = {
 		{"config", required_argument, NULL,	'c'},
+		{"socket", required_argument, NULL,	's'},
 		{"help", no_argument, NULL, 'h'},
 		{0, 0, 0, 0}
 	};
@@ -341,6 +346,9 @@ int parse_arguments(int argc, char **argv, FM95_Config* config) {
 		switch(opt) {
 			case 'c':
 				memcpy(config->ini_config_path, optarg, 63);
+				break;
+			case 's':
+				memcpy(config->socket_config_path, optarg, 63);
 				break;
 			case 'h':
 				show_help(argv[0]);
@@ -361,13 +369,16 @@ static int config_handler(void* user, const char* section, const char* name, con
     if (MATCH("fm95", "stereo")) pconfig->stereo = atoi(value);
 	else if (MATCH("devices", "input")) {
         strncpy(dv->input, value, 63);
-        dv->input[63] = '\0';
+        dv->input[63] = 0;
     } else if (MATCH("devices", "output")) {
         strncpy(dv->output, value, 63);
-        dv->output[63] = '\0';
+        dv->output[63] = 0;
     } else if (MATCH("devices", "mpx")) {
         strncpy(dv->mpx, value, 63);
-        dv->mpx[63] = '\0';
+        dv->mpx[63] = 0;
+	} else if (MATCH("fm95", "socket")) {
+        strncpy(pconfig->socket_config_path, value, 63);
+        pconfig->socket_config_path[63] = 0;
 	} else if (MATCH("fm95", "preemphasis")) pconfig->preemphasis = atoi(value);
     else if (MATCH("fm95", "calibration")) pconfig->calibration = atoi(value);
     else if (MATCH("fm95", "mpx_power")) pconfig->mpx_power = strtof(value, NULL);
@@ -706,6 +717,7 @@ int main(int argc, char **argv) {
 		.sample_rate = 192000, // Sample rate for this whole gizmo to run on
 
 		.ini_config_path = DEFAULT_INI_PATH,
+		.socket_config_path = DEFAULT_SOCKET_PATH,
 
 		.lpf_order = 15, // how good the lpf is, usually no more than 18 is needed
 		.rds_lpf_order = 8, // rds lpf order - i have no idea which cases require this to be set
@@ -801,7 +813,7 @@ int main(int argc, char **argv) {
 
 	ipc_ctx_t ctx;
 	ipc_ctx_t *pctx = &ctx;
-	if(create_ipc(pctx, handle_client, "/etc/fm95/ctl.socket", &fmdata) < 0) {
+	if(create_ipc(pctx, handle_client, config.socket_config_path, &fmdata) < 0) {
 		printf("Could not create IPC.\n");
 		pctx = NULL;
 	}

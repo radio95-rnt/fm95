@@ -17,6 +17,7 @@ typedef void *(*ipc_client_fn)(ipc_client_arg_t *arg);
 
 typedef struct {
     int server_fd;
+    int socket_activated;
     volatile int running;
     ipc_client_fn handler;
     void *user_data;
