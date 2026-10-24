@@ -4,6 +4,7 @@
 #include "ini.h"
 #include <stdbool.h>
 #include <stdatomic.h>
+#include "bulk.h"
 
 #define DEFAULT_INI_PATH "/etc/fm95/fm95.conf"
 #define DEFAULT_SOCKET_PATH "/etc/fm95/ctl.socket"
@@ -211,8 +212,8 @@ FM95_FORCE_INLINE float process_sample(
 ) {
 	advance_oscillator(&runtime->osc);
 
-	float l = in_l * config->audio_preamp;
-	float r = in_r * config->audio_preamp;
+	float l = in_l;
+	float r = in_r;
 
 	if (res) res->input_level = 0.5f * (l + r);
 
@@ -268,7 +269,7 @@ FM95_FORCE_INLINE float process_sample(
 
 	if (res) res->bs412_gain = runtime->bs412.gain;
 
-	return tanhf(mpx) * config->master_volume;
+	return tanhf(mpx);
 }
 
 int run_fm95(FM95_Config* config, FM95_Runtime* runtime, FM95_ResultBox* resultbox) {
@@ -312,6 +313,8 @@ int run_fm95(FM95_Config* config, FM95_Runtime* runtime, FM95_ResultBox* resultb
 			mpx_on = 0;
 		}
 
+		scale_array(audio_stereo_input, BUFFER_SIZE * 2, config->audio_preamp);
+
 		for (uint32_t i = 0; i < BUFFER_SIZE - 1; i++) {
 			output[i] = process_sample(config, runtime,
 				audio_stereo_input[2*i], audio_stereo_input[2*i+1],
@@ -326,6 +329,7 @@ int run_fm95(FM95_Config* config, FM95_Runtime* runtime, FM95_ResultBox* resultb
 		result.count++;
 		publish_result(resultbox, &result);
 
+		scale_array(output, BUFFER_SIZE, config->master_volume);
 		_pulse_output;
 	}
 
@@ -499,7 +503,7 @@ void init_runtime(FM95_Runtime* runtime, const FM95_Config config) {
 	}
 
 	for(int i = 0; i < 4; i++) {
-		bit_ring_init(&runtime->rds_bitring[i], 2496); // 24 groups - aka 2.1018947368421053 seconds
+		bit_ring_init(&runtime->rds_bitring[i], 1664); // 16 groups - aka 1.4012631578947368 seconds
 		runtime->rds_symbol[i] = -1.0f;
 		runtime->rds_last_bit[i] = 0;
 
@@ -794,7 +798,7 @@ int main(int argc, char **argv) {
 		.run_result = &runres
 	};
 
-	// FZ stuff - this helps cpu usage, working on very small numbers is hard so we don't work on them instead
+	// FZ stuff - this helps cpu usage, working on very small numbers is hard so we just don't
 	#if defined(__aarch64__)
 	{
 		uint64_t fpcr;

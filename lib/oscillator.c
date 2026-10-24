@@ -6,7 +6,7 @@ void init_oscillator(Oscillator *osc, float frequency, float sample_rate) {
 	osc->sample_rate = sample_rate;
 }
 
-inline void change_oscillator_frequency(Oscillator *osc, float frequency) {
+void change_oscillator_frequency(Oscillator *osc, float frequency) {
 	osc->phase_increment = (M_2PI * frequency) / osc->sample_rate;
 }
 

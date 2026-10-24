@@ -1,7 +1,6 @@
 #include "bs412.h"
 
 #define BS412_TIME 60
-#define ENABLE_TIME 30
 #define CLAMP(x, lo, hi) (((x) < (lo)) ? (lo) : ((x) > (hi) ? (hi) : (x)))
 
 inline float power_to_dbr(float power, float ref) {
@@ -19,17 +18,11 @@ void init_bs412(BS412Compressor* comp, uint32_t mpx_deviation, float target_powe
 	comp->target = comp->reference * powf(10.0f, target_power / 10.0f);
 	comp->target_dbr = power_to_dbr(comp->target, comp->reference);
 	comp->gain = 1.0f;
-	comp->can_compress = 0;
-	comp->second_counter = 0;
 	comp->max_gain = max_gain;
 	comp->gate_threshold = comp->reference * powf(10.0f, gate / 10.0f);
-	comp->knee_db = knee_db; // e.g. 6.0f — width in dB around target on each side
+	comp->knee_db = knee_db;
 	comp->init = true;
 	comp->strenght = strenght;
-	comp->sample_counter = 0;
-	#ifdef BS412_DEBUG
-	debug_printf("Initialized MPX power measurement with sample rate: %d\n", sample_rate);
-	#endif
 }
 
 void reinit_bs412(BS412Compressor* comp, uint32_t mpx_deviation, float target_power, float attack, float release, float max_gain, float gate, float knee_db, float strenght) {
@@ -46,28 +39,13 @@ void reinit_bs412(BS412Compressor* comp, uint32_t mpx_deviation, float target_po
 
 float bs412_compress(BS412Compressor* comp, float audio, float sample_mpx, float* mpx_power) {
 	float combined = audio + sample_mpx;
-	float output_sample = (audio * comp->gain) + sample_mpx;
+	float gained_audio = audio * comp->gain;
+	float output_sample = gained_audio + sample_mpx;
 
-	float inst_power = output_sample * output_sample;
-	float audio_power = (audio * comp->gain) * (audio * comp->gain);
+	float w = (gained_audio * gained_audio - comp->gate_threshold) / comp->gate_threshold;
+	comp->avg_power += comp->alpha * CLAMP(w, 0.0f, 1.0f) * (output_sample * output_sample - comp->avg_power);
 
-	float w = (audio_power - comp->gate_threshold) / comp->gate_threshold;
-	w = CLAMP(w, 0.0f, 1.0f);
-	comp->avg_power += comp->alpha * w * (inst_power - comp->avg_power);
-
-	if(comp->sample_counter >= comp->sample_rate) {
-		comp->sample_counter = 0;
-		if(comp->can_compress == 0) comp->second_counter++;
-	}
-
-	if(comp->can_compress == 0 && comp->second_counter > ENABLE_TIME) {
-		comp->can_compress = 1;
-		comp->second_counter = 0;
-	}
-
-	float safe_power = fmaxf(comp->avg_power, 1e-12f);
-
-	float level_dbr = power_to_dbr(safe_power, comp->reference);
+	float level_dbr = power_to_dbr(fmaxf(comp->avg_power, 1e-12f), comp->reference);
 	float half_knee = comp->knee_db * 0.5f;
 	float dist = level_dbr - comp->target_dbr;
 
@@ -75,9 +53,8 @@ float bs412_compress(BS412Compressor* comp, float audio, float sample_mpx, float
 	float gain_db = comp->strenght * (comp->target_dbr - level_dbr) * 0.5f;
 
 	// Limit to the gain range actually allowed
-	float max_db = 20.0f * log10f(fmaxf(comp->max_gain, 0.01f));
 	// 20.0f * log10f(0.01f) = -40.0f
-	gain_db = CLAMP(gain_db, -40.0f, max_db);
+	gain_db = CLAMP(gain_db, -40.0f, 20.0f * log10f(fmaxf(comp->max_gain, 0.01f)));
 
 	float knee_blend;
 	if (dist <= -half_knee) knee_blend = 0.0f;
@@ -94,12 +71,9 @@ float bs412_compress(BS412Compressor* comp, float audio, float sample_mpx, float
 	comp->gain = coeff * comp->gain + (1.0f - coeff) * blended_target;
 	if (!isfinite(comp->gain)) comp->gain = 1.0f;
 	comp->gain = CLAMP(comp->gain, 0.01f, comp->max_gain);
-	if (!isfinite(comp->avg_power)) comp->avg_power = 0.0f;
-
-	comp->sample_counter++;
+	if (!isfinite(comp->avg_power)) comp->avg_power = 0.0;
 
 	*mpx_power = level_dbr;
 
-	if(comp->can_compress) return output_sample;
-	return combined;
+	return output_sample;
 }

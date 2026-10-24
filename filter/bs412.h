@@ -15,7 +15,6 @@
 typedef struct {
 	float reference;
 	uint32_t sample_rate;
-	uint32_t sample_counter;
 	float target;
 	float target_dbr;
 	float attack;
@@ -24,8 +23,6 @@ typedef struct {
 	float gain;
 	double avg_power;
 	float alpha;
-	uint8_t can_compress : 1;
-	uint8_t second_counter;
 	float last_output;
 	float gate_threshold;
 	bool init;

@@ -11,9 +11,7 @@ void init_delay_line(delay_line_t *dl, uint32_t delay_samples) {
 float delay_line(delay_line_t *dl, float in) {
     float out = dl->buffer[dl->idx];   // read delayed sample
 
-    dl->buffer[dl->idx] = in;          // write new input
-
-    dl->idx++;
+    dl->buffer[dl->idx++] = in;          // write new input
     if (dl->idx >= dl->delay) dl->idx = 0;
 
     return out;
