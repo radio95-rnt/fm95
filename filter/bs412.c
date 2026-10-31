@@ -45,12 +45,12 @@ float bs412_compress(BS412Compressor* comp, float audio, float sample_mpx, float
 	float w = (gained_audio * gained_audio - comp->gate_threshold) / comp->gate_threshold;
 	comp->avg_power += comp->alpha * CLAMP(w, 0.0f, 1.0f) * (output_sample * output_sample - comp->avg_power);
 
-	float level_dbr = power_to_dbr(fmaxf(comp->avg_power, 1e-12f), comp->reference);
+	*mpx_power = power_to_dbr(fmaxf(comp->avg_power, 1e-12f), comp->reference);
 	float half_knee = comp->knee_db * 0.5f;
-	float dist = level_dbr - comp->target_dbr;
+	float dist = *mpx_power - comp->target_dbr;
 
 	// Required gain in dB (power ratio -> amplitude dB = 0.5 * 10*log10)
-	float gain_db = comp->strenght * (comp->target_dbr - level_dbr) * 0.5f;
+	float gain_db = comp->strenght * (comp->target_dbr - *mpx_power) * 0.5f;
 
 	// Limit to the gain range actually allowed
 	// 20.0f * log10f(0.01f) = -40.0f
@@ -72,8 +72,6 @@ float bs412_compress(BS412Compressor* comp, float audio, float sample_mpx, float
 	if (!isfinite(comp->gain)) comp->gain = 1.0f;
 	comp->gain = CLAMP(comp->gain, 0.01f, comp->max_gain);
 	if (!isfinite(comp->avg_power)) comp->avg_power = 0.0;
-
-	*mpx_power = level_dbr;
 
 	return output_sample;
 }

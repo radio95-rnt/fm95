@@ -187,12 +187,7 @@ void cleanup_audio_runtime(FM95_Runtime *rt, const FM95_Options options) {
     free_PulseDevice(&rt->output_device);
 }
 
-#define _pulse_output \
-if((pulse_error = write_PulseOutputDevice(&runtime->output_device, output, sizeof(output)))) { \
-	fprintf(stderr, "Error writing to output device: %s\n", pa_strerror(pulse_error)); \
-	to_run = 0; \
-	break; \
-}
+#define _pulse_output write_PulseOutputDevice(&runtime->output_device, output, sizeof(output));
 
 static const float stream_shift[4] = {0.0f, (float)M_PI, (float)M_PI_2, (float)(3.0 * M_PI_2)};
 
@@ -215,7 +210,10 @@ FM95_FORCE_INLINE float process_sample(
 	float l = in_l;
 	float r = in_r;
 
-	if (res) res->input_level = 0.5f * (l + r);
+	if (config->lpf_cutoff != 0) {
+		iirfilt_rrrf_execute(runtime->lpf_l, l, &l);
+		iirfilt_rrrf_execute(runtime->lpf_r, r, &r);
+	}
 
 	if (config->agc_max != 0.0f) {
 		float agc_gain = process_agc(&runtime->agc, 0.5f * (l + r));
@@ -224,11 +222,6 @@ FM95_FORCE_INLINE float process_sample(
 		if (res) res->agc_gain = agc_gain;
 	} else if (res) res->agc_gain = 0.0f;
 
-	if (config->lpf_cutoff != 0) {
-		iirfilt_rrrf_execute(runtime->lpf_l, l, &l);
-		iirfilt_rrrf_execute(runtime->lpf_r, r, &r);
-	}
-
 	if (config->preemphasis != 0) {
 		l = apply_preemphasis(&runtime->preemp_l, l);
 		r = apply_preemphasis(&runtime->preemp_r, r);
@@ -236,7 +229,7 @@ FM95_FORCE_INLINE float process_sample(
 
 	l = tanhf(l * config->volumes.drive);
 	r = tanhf(r * config->volumes.drive);
-	float mid  = (l + r) * config->volumes.softclip_norm;
+	float mid = (l + r) * config->volumes.softclip_norm;
 	float side = (l - r) * config->volumes.softclip_norm;
 
 	if (res) res->audio_level = mid;
@@ -326,6 +319,7 @@ int run_fm95(FM95_Config* config, FM95_Runtime* runtime, FM95_ResultBox* resultb
 			audio_stereo_input[2*BUFFER_SIZE-2], audio_stereo_input[2*BUFFER_SIZE-1],
 			mpx_in[BUFFER_SIZE-1], prev_shifted_phase, &result);
 
+		result.input_level = 0.5f * (audio_stereo_input[2*BUFFER_SIZE-2] + audio_stereo_input[2*BUFFER_SIZE-1]);
 		result.count++;
 		publish_result(resultbox, &result);
 

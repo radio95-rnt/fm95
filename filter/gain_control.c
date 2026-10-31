@@ -11,6 +11,7 @@ void initAGC(AGC* agc, uint32_t sampleRate, float targetLevel, float minGain, fl
     agc->rmsBeta = 1.0f - agc->rmsAlpha;
     agc->sampleRate = sampleRate;
 
+    agc->rmsBuffer = 0.0f;
     agc->currentGain = 1.0f;
     agc->currentLevel = 0.0f;
 }
